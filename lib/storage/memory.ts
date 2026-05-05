@@ -50,7 +50,10 @@ export class InMemoryBookingRepository implements BookingRepository {
       slotEnd: slotEndUtc(input.date, input.hour),
       priceFils: input.priceFils,
       currency: input.currency,
-      status: "CONFIRMED",
+      status: "PENDING",
+      paymentStatus: "UNPAID",
+      paidAt: null,
+      paymentRef: null,
       refundFils: 0,
       refundedAt: null,
       createdAt: now,
@@ -108,6 +111,34 @@ export class InMemoryBookingRepository implements BookingRepository {
     const existing = this.findByRefSync(ref);
     if (!existing) return null;
     const updated: Booking = { ...existing, status, updatedAt: new Date() };
+    this.bookings.set(ref, updated);
+    return updated;
+  }
+
+  async markPaid(ref: string, paymentRef: string): Promise<Booking | null> {
+    const existing = this.findByRefSync(ref);
+    if (!existing) return null;
+    const now = new Date();
+    const updated: Booking = {
+      ...existing,
+      paymentStatus: "PAID",
+      paidAt: now,
+      paymentRef,
+      status: existing.status === "PENDING" ? "CONFIRMED" : existing.status,
+      updatedAt: now,
+    };
+    this.bookings.set(ref, updated);
+    return updated;
+  }
+
+  async markPaymentFailed(ref: string): Promise<Booking | null> {
+    const existing = this.findByRefSync(ref);
+    if (!existing) return null;
+    const updated: Booking = {
+      ...existing,
+      paymentStatus: "FAILED",
+      updatedAt: new Date(),
+    };
     this.bookings.set(ref, updated);
     return updated;
   }

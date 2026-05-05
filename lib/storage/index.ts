@@ -9,7 +9,7 @@ import type { BookingRepository } from "./repository";
  * — that forces a fresh instance on next HMR (otherwise the old globalThis
  * instance is missing the new methods).
  */
-const REPO_VERSION = 3;
+const REPO_VERSION = 4;
 
 const g = globalThis as unknown as {
   __bookingRepo?: BookingRepository;

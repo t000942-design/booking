@@ -21,17 +21,10 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <div className="flex flex-col gap-8 pt-6">
       <PitchScene />
-      <section className="text-center">
-        <h1 className="text-5xl font-black tracking-tight drop-shadow">
+      <section className="rounded-3xl bg-white/95 px-5 py-6 text-center text-black shadow-2xl backdrop-blur">
+        <h1 className="text-5xl font-black tracking-tight text-black">
           {branding.pitchName}
         </h1>
-        <p className="mt-2 text-lg font-medium text-white/90">
-          {branding.tagline}
-        </p>
-        <div className="chalk-line my-6" />
-        <p className="text-balance text-base text-white/80">
-          Book a 60-minute slot on one of three pitches. Bring your team.
-        </p>
       </section>
 
       <section className="field-card rounded-2xl p-5 text-pitch-950">

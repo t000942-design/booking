@@ -88,7 +88,11 @@ export function AIAssistant() {
               <ul className="flex flex-col gap-3">
                 {messages.map((m, i) => (
                   <li key={i}>
-                    <Bubble msg={m} onPick={(s) => send(s)} />
+                    <Bubble
+                      msg={m}
+                      onPick={(s) => send(s)}
+                      onLink={() => setOpen(false)}
+                    />
                   </li>
                 ))}
                 {pending ? (
@@ -96,6 +100,7 @@ export function AIAssistant() {
                     <Bubble
                       msg={{ role: "assistant", content: "…" }}
                       onPick={() => {}}
+                      onLink={() => {}}
                     />
                   </li>
                 ) : null}
@@ -135,9 +140,11 @@ export function AIAssistant() {
 function Bubble({
   msg,
   onPick,
+  onLink,
 }: {
   msg: ChatMessage;
   onPick: (s: string) => void;
+  onLink: () => void;
 }) {
   const isUser = msg.role === "user";
   return (
@@ -155,6 +162,7 @@ function Bubble({
       {!isUser && msg.link ? (
         <Link
           href={msg.link.href}
+          onClick={onLink}
           className="rounded-full bg-pitch-700 px-3 py-1 text-xs font-semibold text-white hover:bg-pitch-800"
         >
           {msg.link.label} →

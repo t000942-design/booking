@@ -1,4 +1,5 @@
 export type BookingStatus = "PENDING" | "CONFIRMED" | "DONE" | "CANCELLED";
+export type PaymentStatus = "UNPAID" | "PAID" | "FAILED";
 
 export interface Booking {
   id: string;
@@ -20,6 +21,10 @@ export interface Booking {
   priceFils: number;
   currency: string;
   status: BookingStatus;
+  paymentStatus: PaymentStatus;
+  paidAt: Date | null;
+  /** Reference returned by the payment gateway (MyFatoorah InvoiceId, etc.). */
+  paymentRef: string | null;
   /** Total amount refunded so far (full or partial). 0 if none. */
   refundFils: number;
   refundedAt: Date | null;

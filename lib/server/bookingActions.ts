@@ -40,7 +40,7 @@ export async function createBookingAction(
 
   try {
     const booking = await createBooking(dto);
-    redirect(`/booking/${booking.ref}`);
+    redirect(`/pay/${booking.ref}`);
   } catch (err) {
     if (err instanceof BookingValidationError) {
       const fieldErrors: Record<string, string> = {};

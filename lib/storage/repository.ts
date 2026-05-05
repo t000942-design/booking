@@ -33,6 +33,10 @@ export interface BookingRepository {
     fullRefund: boolean,
   ): Promise<Booking | null>;
 
+  // Payments
+  markPaid(ref: string, paymentRef: string): Promise<Booking | null>;
+  markPaymentFailed(ref: string): Promise<Booking | null>;
+
   // Blocked slots
   blockSlot(
     date: string,

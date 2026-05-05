@@ -271,3 +271,63 @@ body {
   width: 100%;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent);
 }
+
+/* ---------- Animated check on confirmation page ---------- */
+.animated-check-path {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: check-draw 0.55s cubic-bezier(0.55, 0.06, 0.68, 0.19) 0.25s forwards;
+}
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ---------- Confetti ---------- */
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  border-radius: 2px;
+  animation-name: confetti-fall;
+  animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  100% {
+    transform: translate3d(20vw, 110vh, 0) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* ---------- Sticky action bar ---------- */
+.action-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  margin-top: 8px;
+}
+.action-bar-card {
+  background: rgba(5, 46, 22, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+  color: white;
+}
+
+/* ---------- Slot chip animations ---------- */
+.slot-chip {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.slot-chip:not([aria-disabled="true"]):hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.35);
+}
+.slot-chip:not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+}
