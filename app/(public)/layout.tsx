@@ -5,6 +5,24 @@ import { getSession } from "@/lib/auth/session";
 import { signOutAction } from "@/lib/server/authActions";
 import { Button } from "@/components/ui/Button";
 
+function SignOutIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
 export default async function PublicLayout({
   children,
 }: {
@@ -18,7 +36,13 @@ export default async function PublicLayout({
         <BrandMark className="text-white" />
         {session?.role === "customer" ? (
           <form action={signOutAction}>
-            <Button variant="ghost" size="sm" type="submit">
+            <Button
+              variant="secondary"
+              size="sm"
+              type="submit"
+              className="inline-flex items-center gap-1.5"
+            >
+              <SignOutIcon />
               Sign out
             </Button>
           </form>
