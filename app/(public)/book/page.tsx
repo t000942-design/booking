@@ -12,9 +12,16 @@ import type { Discount, Slot } from "@/lib/domain/types";
 import { LobbyBackdrop } from "@/components/LobbyBackdrop";
 import { AIAssistant } from "./AIAssistant";
 import { BookingForm } from "./BookingForm";
+import { FilterBar, type SlotFilter } from "./FilterBar";
+import { findNextOpenSlot, NextSlotCard } from "./NextSlotCard";
 
 interface PageProps {
-  searchParams: Promise<{ date?: string; hour?: string; pitch?: string }>;
+  searchParams: Promise<{
+    date?: string;
+    hour?: string;
+    pitch?: string;
+    filter?: string;
+  }>;
 }
 
 const PITCH_ACCENTS: Record<
@@ -68,6 +75,13 @@ export default async function BookPage({ searchParams }: PageProps) {
   const selectedHour =
     params.hour && /^\d+$/.test(params.hour) ? Number(params.hour) : null;
 
+  const filter: SlotFilter =
+    params.filter === "available" ||
+    params.filter === "evening" ||
+    params.filter === "discount"
+      ? params.filter
+      : "all";
+
   // For each pitch, fetch its availability across all 7 days, plus the
   // discounts active per day (used for badges).
   const pitchData = await Promise.all(
@@ -104,6 +118,9 @@ export default async function BookPage({ searchParams }: PageProps) {
   });
   const pendingBooking = myBookings.find((b) => b.customerPhone === session.phone);
 
+  // "Soonest open slot" quick action — computed on raw data (pre-filter).
+  const nextOpen = findNextOpenSlot(pitchData);
+
   return (
     <div className="flex flex-col gap-5 pt-2">
       <LobbyBackdrop />
@@ -115,6 +132,10 @@ export default async function BookPage({ searchParams }: PageProps) {
           {branding.pitchName} · {branding.location}
         </p>
       </div>
+
+      <FilterBar active={filter} />
+
+      <NextSlotCard next={nextOpen} />
 
       {pendingBooking ? (
         <a
@@ -149,6 +170,7 @@ export default async function BookPage({ searchParams }: PageProps) {
             selectedDate={selectedDate}
             selectedPitch={selectedPitch}
             selectedHour={selectedHour}
+            filter={filter}
           />
         ))}
       </section>
@@ -197,6 +219,7 @@ function PitchSection({
   selectedDate,
   selectedPitch,
   selectedHour,
+  filter,
 }: {
   pitch: string;
   today: string;
@@ -204,6 +227,7 @@ function PitchSection({
   selectedDate: string;
   selectedPitch: string;
   selectedHour: number | null;
+  filter: SlotFilter;
 }) {
   const accent = PITCH_ACCENTS[pitch] ?? FALLBACK_ACCENT;
   const photo = branding.pitchPhotos[pitch];
@@ -234,9 +258,12 @@ function PitchSection({
       ) : null}
 
       {/* Calendar (rows = days, slots for THIS pitch) */}
-      <div className="mx-4 mb-4 mt-2 overflow-hidden rounded-2xl bg-white/85 ring-1 ring-pitch-900/5">
+      <div className="mx-4 mb-4 mt-2 overflow-hidden rounded-2xl bg-white/90 ring-1 ring-pitch-900/5">
         <ul className="divide-y divide-pitch-100">
           {pitchDays.map(({ date, slots, discounts }) => {
+            const visibleSlots = filterSlots(slots, filter, discounts);
+            if (filter !== "all" && visibleSlots.length === 0) return null;
+
             const open = slots.filter(
               (s) => !s.taken && !s.blocked && !s.inPast,
             ).length;
@@ -245,6 +272,7 @@ function PitchSection({
                 !best || d.percentOff > best.percentOff ? d : best,
               null,
             );
+            const groups = groupByTimeOfDay(visibleSlots);
             return (
               <li key={date} className="px-3 py-2.5 sm:px-4">
                 <div className="mb-1.5 flex items-baseline justify-between gap-2">
@@ -273,25 +301,49 @@ function PitchSection({
                     {open} open
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {slots.map((s) => (
-                    <SlotChip
-                      key={s.hour}
-                      slot={s}
-                      date={date}
-                      pitch={pitch}
-                      isSelected={
-                        selectedDate === date &&
-                        selectedPitch === pitch &&
-                        selectedHour === s.hour
-                      }
-                    />
-                  ))}
+                <div className="flex flex-col gap-1.5">
+                  {(["day", "evening", "night"] as const).map((part) => {
+                    const groupSlots = groups[part];
+                    if (groupSlots.length === 0) return null;
+                    return (
+                      <div
+                        key={part}
+                        className="flex flex-wrap items-center gap-1.5"
+                      >
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-pitch-900/45 w-12">
+                          <span aria-hidden>{partIcon(part)}</span>
+                          {partLabel(part)}
+                        </span>
+                        {groupSlots.map((s) => (
+                          <SlotChip
+                            key={s.hour}
+                            slot={s}
+                            date={date}
+                            pitch={pitch}
+                            isSelected={
+                              selectedDate === date &&
+                              selectedPitch === pitch &&
+                              selectedHour === s.hour
+                            }
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </li>
             );
           })}
         </ul>
+        {filter !== "all" &&
+        pitchDays.every(
+          ({ slots, discounts }) =>
+            filterSlots(slots, filter, discounts).length === 0,
+        ) ? (
+          <div className="px-4 py-5 text-center text-xs text-pitch-900/55">
+            No slots match this filter for {pitch}.
+          </div>
+        ) : null}
       </div>
 
       {/* Photo of this pitch */}
@@ -354,6 +406,49 @@ function StickyActionBar({
       </div>
     </div>
   );
+}
+
+function filterSlots(
+  slots: Slot[],
+  filter: SlotFilter,
+  discounts: Discount[],
+): Slot[] {
+  switch (filter) {
+    case "available":
+      return slots.filter((s) => !s.taken && !s.blocked && !s.inPast);
+    case "evening":
+      return slots.filter((s) => s.hour >= 18);
+    case "discount":
+      return discounts.length > 0 ? slots : [];
+    case "all":
+    default:
+      return slots;
+  }
+}
+
+function groupByTimeOfDay(slots: Slot[]): {
+  day: Slot[];
+  evening: Slot[];
+  night: Slot[];
+} {
+  const out = { day: [] as Slot[], evening: [] as Slot[], night: [] as Slot[] };
+  for (const s of slots) {
+    if (s.hour < 18) out.day.push(s);
+    else if (s.hour < 21) out.evening.push(s);
+    else out.night.push(s);
+  }
+  return out;
+}
+
+function partIcon(part: "day" | "evening" | "night"): string {
+  if (part === "day") return "☀";
+  if (part === "evening") return "🌅";
+  return "🌙";
+}
+function partLabel(part: "day" | "evening" | "night"): string {
+  if (part === "day") return "Day";
+  if (part === "evening") return "Eve";
+  return "Late";
 }
 
 function ClockIcon() {
