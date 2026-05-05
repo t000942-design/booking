@@ -118,7 +118,7 @@ export default async function ConfirmationPage({ params }: PageProps) {
           )}
           {booking.paymentStatus === "PAID" ? (
             <div className="text-xs text-emerald-700">
-              Paid via MyFatoorah
+              Paid
               {booking.paymentRef ? (
                 <>
                   {" · "}
@@ -126,10 +126,8 @@ export default async function ConfirmationPage({ params }: PageProps) {
                 </>
               ) : null}
             </div>
-          ) : booking.paymentStatus === "FAILED" ? (
-            <div className="text-xs text-red-700">Payment failed</div>
           ) : (
-            <div className="text-xs text-amber-700">Awaiting payment</div>
+            <div className="text-xs text-pitch-900/60">Pay on arrival</div>
           )}
           {booking.refundFils > 0 ? (
             <div className="text-xs text-amber-700">
@@ -158,9 +156,7 @@ export default async function ConfirmationPage({ params }: PageProps) {
           <li className="flex gap-2.5">
             <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/15 text-[10px] font-bold">3</span>
             <span>
-              {booking.paymentStatus === "PAID"
-                ? `Paid · ${formatPrice(booking.priceFils, booking.currency)} settled.`
-                : `Settle ${formatPrice(booking.priceFils, booking.currency)} from /pay/${booking.ref}.`}
+              Pay {formatPrice(booking.priceFils - booking.discountFils, booking.currency)} on arrival.
             </span>
           </li>
           <li className="flex gap-2.5">

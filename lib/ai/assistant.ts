@@ -55,9 +55,12 @@ export async function askAssistant(
     return await cancelByRefMessage(refMatch[1].toUpperCase(), ctx);
   }
 
-  // 3. Pay for booking by ref
+  // 3. Pay for booking by ref — payments are disabled; settle on arrival.
   if (refMatch && /\b(pay|payment|checkout)\b/.test(text)) {
-    return await payByRefMessage(refMatch[1].toUpperCase(), ctx);
+    return {
+      role: "assistant",
+      content: `Online payment is off for now — pay ${refMatch[1].toUpperCase()} on arrival when you turn up.`,
+    };
   }
 
   // 4. "my bookings" / "what did i book"
@@ -254,29 +257,6 @@ async function cancelByRefMessage(
   };
 }
 
-async function payByRefMessage(ref: string, ctx: Ctx): Promise<ChatMessage> {
-  const booking = await getBookingByRef(ref);
-  if (!booking) {
-    return { role: "assistant", content: `Booking ${ref} not found.` };
-  }
-  if (ctx.phone && booking.customerPhone !== ctx.phone) {
-    return {
-      role: "assistant",
-      content: `Booking ${ref} is on a different account.`,
-    };
-  }
-  if (booking.paymentStatus === "PAID") {
-    return {
-      role: "assistant",
-      content: `${ref} is already paid in full.`,
-    };
-  }
-  return {
-    role: "assistant",
-    content: `${ref} — ${formatPrice(booking.priceFils - booking.discountFils, booking.currency)} due. I'll send you to MyFatoorah.`,
-    link: { href: `/pay/${ref}`, label: "Pay now" },
-  };
-}
 
 // ---------------- Booking intent ----------------
 

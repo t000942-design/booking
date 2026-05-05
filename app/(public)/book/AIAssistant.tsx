@@ -270,31 +270,21 @@ function BookingCard({
           {booking.currency} {(due / 1000).toFixed(0)}
         </div>
         {!isFinal ? (
-          <div className="flex flex-col items-end gap-1">
-            {booking.paymentStatus !== "PAID" ? (
-              <Link
-                href={`/pay/${booking.ref}`}
-                className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700"
-              >
-                Pay →
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() =>
-                onAction({
-                  kind: "cancel",
-                  label: "Cancel",
-                  payload: { ref: booking.ref },
-                  tone: "danger",
-                })
-              }
-              disabled={pending}
-              className="rounded-full border border-red-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() =>
+              onAction({
+                kind: "cancel",
+                label: "Cancel",
+                payload: { ref: booking.ref },
+                tone: "danger",
+              })
+            }
+            disabled={pending}
+            className="rounded-full border border-red-200 bg-white px-2.5 py-0.5 text-[10px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
         ) : null}
       </div>
     </li>
@@ -307,17 +297,13 @@ function StatusBadge({ booking }: { booking: BookingSummary }) {
       ? "bg-red-100 text-red-800"
       : booking.status === "DONE"
       ? "bg-slate-100 text-slate-700"
-      : booking.paymentStatus === "PAID"
-      ? "bg-emerald-100 text-emerald-800"
-      : "bg-amber-100 text-amber-800";
+      : "bg-emerald-100 text-emerald-800";
   const label =
     booking.status === "CANCELLED"
       ? "Cancelled"
       : booking.status === "DONE"
       ? "Done"
-      : booking.paymentStatus === "PAID"
-      ? "Paid"
-      : "Awaiting pay";
+      : "Confirmed";
   return (
     <span className={`rounded-full px-1.5 py-0.5 font-semibold ${tone}`}>
       {label}
