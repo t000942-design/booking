@@ -239,7 +239,7 @@ body {
 .lobby-bg {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background:
     radial-gradient(1200px 600px at 20% 25%, rgba(22, 163, 74, 0.28), transparent 60%),
@@ -280,7 +280,7 @@ body {
 .lobby-bg-dots {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background-image:
     radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
