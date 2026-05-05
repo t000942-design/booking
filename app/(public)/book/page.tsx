@@ -5,7 +5,7 @@ import {
   upcomingDates,
   venueDateLabel,
 } from "@/lib/domain/slots";
-import { getAllPitchesAvailability } from "@/lib/services/bookings";
+import { getDayAvailability } from "@/lib/services/bookings";
 import { findDiscountsForDate } from "@/lib/services/discounts";
 import { bookingRepository } from "@/lib/storage";
 import type { Discount, Slot } from "@/lib/domain/types";
@@ -16,36 +16,39 @@ interface PageProps {
   searchParams: Promise<{ date?: string; hour?: string; pitch?: string }>;
 }
 
-/** Pitch-by-name accent palette for slot chips. */
 const PITCH_ACCENTS: Record<
   string,
-  { idle: string; selected: string; hint: string; dot: string }
+  { idle: string; selected: string; dot: string; bar: string; tint: string }
 > = {
   "Pitch 1": {
     idle: "bg-emerald-100 text-emerald-900 hover:bg-emerald-200",
     selected: "bg-emerald-700 text-white",
-    hint: "text-emerald-800/70",
     dot: "bg-emerald-500",
+    bar: "from-emerald-400 to-emerald-700",
+    tint: "from-white to-emerald-50",
   },
   "Pitch 2": {
     idle: "bg-sky-100 text-sky-900 hover:bg-sky-200",
     selected: "bg-sky-700 text-white",
-    hint: "text-sky-800/70",
     dot: "bg-sky-500",
+    bar: "from-sky-400 to-sky-700",
+    tint: "from-white to-sky-50",
   },
   "Pitch 3": {
     idle: "bg-amber-100 text-amber-900 hover:bg-amber-200",
     selected: "bg-amber-700 text-white",
-    hint: "text-amber-800/70",
     dot: "bg-amber-500",
+    bar: "from-amber-400 to-amber-700",
+    tint: "from-white to-amber-50",
   },
 };
 
 const FALLBACK_ACCENT = {
   idle: "bg-pitch-100 text-pitch-900 hover:bg-pitch-200",
   selected: "bg-pitch-700 text-white",
-  hint: "text-pitch-900/70",
   dot: "bg-pitch-500",
+  bar: "from-pitch-400 to-pitch-700",
+  tint: "from-white to-pitch-50",
 };
 
 export default async function BookPage({ searchParams }: PageProps) {
@@ -64,17 +67,26 @@ export default async function BookPage({ searchParams }: PageProps) {
   const selectedHour =
     params.hour && /^\d+$/.test(params.hour) ? Number(params.hour) : null;
 
-  const calendar = await Promise.all(
-    days.map(async (date) => ({
-      date,
-      pitches: await getAllPitchesAvailability(date),
-      discounts: await findDiscountsForDate(date),
-    })),
+  // For each pitch, fetch its availability across all 7 days, plus the
+  // discounts active per day (used for badges).
+  const pitchData = await Promise.all(
+    branding.pitches.map(async (pitch) => {
+      const days7 = await Promise.all(
+        days.map(async (date) => ({
+          date,
+          slots: await getDayAvailability(date, pitch),
+          discounts: await findDiscountsForDate(date),
+        })),
+      );
+      return { pitch, days: days7 };
+    }),
   );
 
-  const selectedDayPitches = calendar.find((d) => d.date === selectedDate);
+  // Available hours for the form (depend on selected pitch + date).
   const selectedSlots =
-    selectedDayPitches?.pitches.find((p) => p.pitch === selectedPitch)?.slots ?? [];
+    pitchData
+      .find((p) => p.pitch === selectedPitch)
+      ?.days.find((d) => d.date === selectedDate)?.slots ?? [];
   const availableHours = selectedSlots
     .filter((s) => !s.taken && !s.blocked && !s.inPast)
     .map((s) => s.hour);
@@ -84,7 +96,7 @@ export default async function BookPage({ searchParams }: PageProps) {
     selectedPitch &&
     availableHours.includes(selectedHour);
 
-  // "You have an unpaid booking" banner
+  // Pending unpaid booking banner
   const myBookings = await bookingRepository.list({
     query: session.phone,
     status: "PENDING",
@@ -95,9 +107,9 @@ export default async function BookPage({ searchParams }: PageProps) {
     <div className="flex flex-col gap-5 pt-2">
       <div className="text-center">
         <h1 className="text-3xl font-black tracking-tight drop-shadow">
-          Book a pitch
+          Pick your pitch
         </h1>
-        <p className="mt-1 text-sm text-white/80">
+        <p className="mt-1 text-sm text-white/85">
           {branding.pitchName} · {branding.location}
         </p>
       </div>
@@ -125,16 +137,13 @@ export default async function BookPage({ searchParams }: PageProps) {
         </a>
       ) : null}
 
-      <DayJumpBar days={days} today={today} selected={selectedDate} />
-
-      <section className="flex flex-col gap-3">
-        {calendar.map(({ date, pitches, discounts }) => (
-          <DayCard
-            key={date}
-            date={date}
-            isToday={date === today}
-            pitches={pitches}
-            discounts={discounts}
+      <section className="flex flex-col gap-5">
+        {pitchData.map(({ pitch, days: pitchDays }) => (
+          <PitchSection
+            key={pitch}
+            pitch={pitch}
+            today={today}
+            pitchDays={pitchDays}
             selectedDate={selectedDate}
             selectedPitch={selectedPitch}
             selectedHour={selectedHour}
@@ -179,6 +188,135 @@ export default async function BookPage({ searchParams }: PageProps) {
   );
 }
 
+function PitchSection({
+  pitch,
+  today,
+  pitchDays,
+  selectedDate,
+  selectedPitch,
+  selectedHour,
+}: {
+  pitch: string;
+  today: string;
+  pitchDays: { date: string; slots: Slot[]; discounts: Discount[] }[];
+  selectedDate: string;
+  selectedPitch: string;
+  selectedHour: number | null;
+}) {
+  const accent = PITCH_ACCENTS[pitch] ?? FALLBACK_ACCENT;
+  const photo = branding.pitchPhotos[pitch];
+  const tagline = branding.pitchTaglines[pitch];
+
+  const totalOpen = pitchDays.reduce(
+    (sum, d) =>
+      sum + d.slots.filter((s) => !s.taken && !s.blocked && !s.inPast).length,
+    0,
+  );
+
+  return (
+    <article
+      id={`pitch-${pitch.replace(/\s+/g, "-")}`}
+      className={`field-card overflow-hidden rounded-3xl bg-gradient-to-br ${accent.tint} text-pitch-950 shadow-lg shadow-pitch-900/10`}
+    >
+      <header className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
+        <div className="flex items-center gap-2">
+          <span className={`h-2.5 w-2.5 rounded-full ${accent.dot}`} />
+          <h2 className="text-lg font-black tracking-tight">{pitch}</h2>
+        </div>
+        <span className="text-[11px] font-semibold text-pitch-900/70">
+          {totalOpen} open · 7 days
+        </span>
+      </header>
+      {tagline ? (
+        <p className="px-4 pb-2 text-xs text-pitch-900/65">{tagline}</p>
+      ) : null}
+
+      {/* Calendar (rows = days, slots for THIS pitch) */}
+      <div className="mx-4 mb-4 mt-2 overflow-hidden rounded-2xl bg-white/85 ring-1 ring-pitch-900/5">
+        <ul className="divide-y divide-pitch-100">
+          {pitchDays.map(({ date, slots, discounts }) => {
+            const open = slots.filter(
+              (s) => !s.taken && !s.blocked && !s.inPast,
+            ).length;
+            const topDiscount = discounts.reduce<Discount | null>(
+              (best, d) =>
+                !best || d.percentOff > best.percentOff ? d : best,
+              null,
+            );
+            return (
+              <li key={date} className="px-3 py-2.5 sm:px-4">
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[13px] font-bold tracking-tight">
+                      {date === today ? (
+                        <span className="rounded-md bg-pitch-700 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+                          Today
+                        </span>
+                      ) : (
+                        venueDateLabel(date).split(" ")[0]
+                      )}{" "}
+                      <span className="text-pitch-900/60 font-semibold">
+                        {venueDateLabel(date).slice(
+                          venueDateLabel(date).indexOf(" ") + 1,
+                        )}
+                      </span>
+                    </span>
+                    {topDiscount ? (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                        🏷 {topDiscount.percentOff}% OFF
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-[10px] font-semibold text-pitch-900/55">
+                    {open} open
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {slots.map((s) => (
+                    <SlotChip
+                      key={s.hour}
+                      slot={s}
+                      date={date}
+                      pitch={pitch}
+                      isSelected={
+                        selectedDate === date &&
+                        selectedPitch === pitch &&
+                        selectedHour === s.hour
+                      }
+                    />
+                  ))}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {/* Photo of this pitch */}
+      {photo ? (
+        <figure className="relative h-44 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photo}
+            alt={`${pitch} at ${branding.pitchName}`}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+          <figcaption className="absolute bottom-0 left-0 right-0 px-4 pb-3 text-white">
+            <div className="text-[11px] font-semibold uppercase tracking-widest opacity-80">
+              {pitch}
+            </div>
+            <div className="text-sm font-medium">
+              {tagline ?? "7-a-side"}
+            </div>
+          </figcaption>
+        </figure>
+      ) : null}
+    </article>
+  );
+}
+
 function StickyActionBar({
   pitch,
   date,
@@ -216,150 +354,6 @@ function StickyActionBar({
   );
 }
 
-function DayJumpBar({
-  days,
-  today,
-  selected,
-}: {
-  days: string[];
-  today: string;
-  selected: string;
-}) {
-  return (
-    <nav
-      aria-label="Jump to day"
-      className="-mx-4 sticky top-0 z-10 overflow-x-auto bg-pitch-950/40 px-4 py-2 backdrop-blur"
-    >
-      <ul className="flex gap-2">
-        {days.map((d) => {
-          const active = d === selected;
-          const label = venueDateLabel(d);
-          const [dow, ...rest] = label.split(" ");
-          const num = rest.join(" ");
-          return (
-            <li key={d} className="shrink-0">
-              <a
-                href={`#day-${d}`}
-                className={
-                  "flex min-w-[68px] flex-col items-center rounded-xl px-2 py-1 text-xs transition " +
-                  (active
-                    ? "bg-white text-pitch-900 font-bold shadow"
-                    : "bg-white/10 text-white hover:bg-white/20")
-                }
-              >
-                <span className="uppercase tracking-wider opacity-80">
-                  {d === today ? "Today" : dow}
-                </span>
-                <span className="text-sm font-semibold">{num}</span>
-              </a>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
-}
-
-function DayCard({
-  date,
-  isToday,
-  pitches,
-  discounts,
-  selectedDate,
-  selectedPitch,
-  selectedHour,
-}: {
-  date: string;
-  isToday: boolean;
-  pitches: { pitch: string; slots: Slot[] }[];
-  discounts: Discount[];
-  selectedDate: string;
-  selectedPitch: string;
-  selectedHour: number | null;
-}) {
-  const totalSlots = pitches.reduce((sum, p) => sum + p.slots.length, 0);
-  const openSlots = pitches.reduce(
-    (sum, p) => sum + p.slots.filter((s) => !s.taken && !s.blocked && !s.inPast).length,
-    0,
-  );
-  const fillPct = totalSlots > 0 ? Math.round(((totalSlots - openSlots) / totalSlots) * 100) : 0;
-  const topDiscount = discounts.reduce<Discount | null>(
-    (best, d) => (!best || d.percentOff > best.percentOff ? d : best),
-    null,
-  );
-
-  return (
-    <div
-      id={`day-${date}`}
-      className="field-card rounded-3xl bg-gradient-to-br from-white to-pitch-50 p-4 text-pitch-950 shadow-lg shadow-pitch-900/10 scroll-mt-20 transition hover:shadow-xl"
-    >
-      <header className="mb-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-bold tracking-tight">
-            {isToday ? (
-              <span className="rounded-md bg-pitch-700 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-white">
-                Today
-              </span>
-            ) : (
-              <>{venueDateLabel(date).split(" ")[0]}</>
-            )}{" "}
-            <span className="text-pitch-900/60">
-              {venueDateLabel(date).slice(venueDateLabel(date).indexOf(" ") + 1)}
-            </span>
-          </h3>
-          <span className="text-[11px] font-semibold text-pitch-900/70">
-            {openSlots} open
-          </span>
-        </div>
-        {topDiscount ? (
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
-            <span>🏷</span>
-            {topDiscount.name} · {topDiscount.percentOff}% OFF
-          </div>
-        ) : null}
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-pitch-100">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-pitch-500 to-pitch-700 transition-all duration-500"
-            style={{ width: `${fillPct}%` }}
-            aria-label={`${fillPct}% booked`}
-          />
-        </div>
-      </header>
-      <ul className="flex flex-col gap-3">
-        {pitches.map(({ pitch, slots }) => {
-          const isSelectedPitch =
-            selectedDate === date && selectedPitch === pitch;
-          const accent = PITCH_ACCENTS[pitch] ?? FALLBACK_ACCENT;
-          const open = slots.filter((s) => !s.taken && !s.blocked && !s.inPast).length;
-          return (
-            <li key={pitch}>
-              <div className="mb-1.5 flex items-center justify-between text-xs uppercase tracking-wider">
-                <span className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${accent.dot}`} />
-                  <span className="font-semibold text-pitch-900/85">{pitch}</span>
-                </span>
-                <span className={`text-[10px] ${accent.hint}`}>
-                  {open} open
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {slots.map((s) => (
-                  <SlotChip
-                    key={s.hour}
-                    slot={s}
-                    date={date}
-                    isSelected={isSelectedPitch && selectedHour === s.hour}
-                  />
-                ))}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 function ClockIcon() {
   return (
     <svg
@@ -380,17 +374,19 @@ function ClockIcon() {
 function SlotChip({
   slot,
   date,
+  pitch,
   isSelected,
 }: {
   slot: Slot;
   date: string;
+  pitch: string;
   isSelected: boolean;
 }) {
   const disabled = slot.taken || slot.blocked || slot.inPast;
-  const accent = PITCH_ACCENTS[slot.pitch] ?? FALLBACK_ACCENT;
+  const accent = PITCH_ACCENTS[pitch] ?? FALLBACK_ACCENT;
   const q = new URLSearchParams({
     date,
-    pitch: slot.pitch,
+    pitch,
     hour: String(slot.hour),
   });
   const href = disabled ? "#" : `/book?${q.toString()}#details`;
@@ -408,7 +404,7 @@ function SlotChip({
       aria-disabled={disabled}
       title={reason ?? undefined}
       className={
-        "slot-chip inline-flex min-w-[58px] items-center justify-center rounded-lg px-2 py-1.5 text-sm font-semibold " +
+        "slot-chip inline-flex min-w-[54px] items-center justify-center rounded-lg px-2 py-1.5 text-sm font-semibold " +
         (disabled
           ? "cursor-not-allowed bg-pitch-900/5 text-pitch-900/30 line-through"
           : isSelected
