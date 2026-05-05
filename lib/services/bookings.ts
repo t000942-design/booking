@@ -55,6 +55,15 @@ export async function listBookingsForDate(date: string): Promise<Booking[]> {
   return bookingRepository.list({ date });
 }
 
+export async function listBookingsForCustomer(
+  phone: string,
+): Promise<Booking[]> {
+  const all = await bookingRepository.list();
+  return all
+    .filter((b) => b.customerPhone === phone)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
 /** Slots for one pitch on one date, with taken/blocked/inPast filled in. */
 export async function getDayAvailability(
   date: string,

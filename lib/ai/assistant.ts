@@ -4,41 +4,81 @@ import {
   todayAtVenue,
   upcomingDates,
   venueDateLabel,
+  venueTime,
 } from "@/lib/domain/slots";
-import { getAllPitchesAvailability } from "@/lib/services/bookings";
+import {
+  getAllPitchesAvailability,
+  getBookingByRef,
+  listBookingsForCustomer,
+} from "@/lib/services/bookings";
 import { findDiscountsForDate, listDiscounts } from "@/lib/services/discounts";
+import { bookingRepository } from "@/lib/storage";
 import { formatPrice } from "@/lib/utils/format";
-import type { ChatMessage } from "./types";
+import type { Booking } from "@/lib/domain/types";
+import type { BookingSummary, ChatMessage } from "./types";
+
+interface Ctx {
+  /** Phone of the signed-in customer, if any. */
+  phone?: string;
+  /** Customer's name from the session, if any. */
+  name?: string;
+}
 
 /**
  * Day 1: rule-based assistant ("Coach"). Day 2 swap: replace askAssistant with
  * an LLM call that has tool access to the same services. Same return shape.
  */
-export async function askAssistant(question: string): Promise<ChatMessage> {
+export async function askAssistant(
+  question: string,
+  ctx: Ctx = {},
+): Promise<ChatMessage> {
   const text = question.toLowerCase().trim();
   if (!text) return defaultMessage();
 
   // 1. Greetings
-  if (/\b(hi|hello|hey|salam|hola|yo|sup)\b/.test(text)) {
+  if (/^(hi|hello|hey|salam|hola|yo|sup)\b/.test(text)) {
     return {
       role: "assistant",
-      content: `Welcome to ${branding.pitchName}. I can find you a slot, list discounts, or recommend a pitch. Try one of these:`,
+      content: `Welcome to ${branding.pitchName}. Tell me what you want — I can book a slot, cancel one, list your bookings, or just answer questions.`,
       suggestions: [
         "What's open today?",
-        "Any discounts?",
         "Book me Friday 7pm",
-        "Recommend a pitch",
+        "My bookings",
+        "Any discounts?",
       ],
     };
   }
 
-  // 2. Discount queries
+  // 2. Cancel by ref:  "cancel KO-XXXXXX"
+  const refMatch = text.match(/\b(ko-[a-z0-9]{6})\b/i);
+  if (refMatch && /\b(cancel|drop|delete|undo)\b/.test(text)) {
+    return await cancelByRefMessage(refMatch[1].toUpperCase(), ctx);
+  }
+
+  // 3. Pay for booking by ref
+  if (refMatch && /\b(pay|payment|checkout)\b/.test(text)) {
+    return await payByRefMessage(refMatch[1].toUpperCase(), ctx);
+  }
+
+  // 4. "my bookings" / "what did i book"
+  if (
+    /\b(my\s+bookings?|what\s+did\s+i\s+book|my\s+slots?|my\s+reservations?|my\s+games?)\b/.test(
+      text,
+    )
+  ) {
+    return await myBookingsMessage(ctx);
+  }
+
+  // 5. Discount queries
   if (/\b(discount|deal|promo|offer|sale|cheap|cheaper)s?\b/.test(text)) {
     return discountsMessage();
   }
 
-  // 3. Hours / opening
-  if (/\b(open(ing)?|close|hours?|when do you|what time)\b/.test(text) && !/today|tomorrow|tonight/.test(text)) {
+  // 6. Hours / opening
+  if (
+    /\b(open(ing)?|close|hours?|when do you|what time)\b/.test(text) &&
+    !/today|tomorrow|tonight/.test(text)
+  ) {
     return {
       role: "assistant",
       content: `We're open every day from ${branding.openingHour}:00 to ${branding.closingHour}:00. Slots are 60 minutes, on the hour.`,
@@ -46,7 +86,7 @@ export async function askAssistant(question: string): Promise<ChatMessage> {
     };
   }
 
-  // 4. Location
+  // 7. Location
   if (/\b(where|location|address|map|how to get|directions)\b/.test(text)) {
     return {
       role: "assistant",
@@ -55,75 +95,62 @@ export async function askAssistant(question: string): Promise<ChatMessage> {
     };
   }
 
-  // 5. Cancel intent
-  if (/\b(cancel|delete|undo|drop)\b.*\b(book|reservation|slot)\b/.test(text)) {
-    return {
-      role: "assistant",
-      content: `Need to cancel? Call the owner at ${branding.ownerPhone} at least 2 hours before — they'll handle the refund based on policy.`,
-    };
-  }
-
-  // 6. Booking intent: try to extract a target slot from natural language
+  // 8. Booking intent: try to extract a target slot from natural language
   const target = parseBookingIntent(text);
   if (target) {
-    return await bookingSuggestionMessage(target);
+    return await bookingSuggestionMessage(target, ctx);
   }
 
-  // 7. Tonight / today
+  // 9. Tonight / today
   if (/\b(today|tonight|now|this evening)\b/.test(text)) {
     return availabilityMessage(todayAtVenue(), "today");
   }
 
-  // 8. Tomorrow
+  // 10. Tomorrow
   if (/\btomorrow\b/.test(text)) {
     const dates = upcomingDates(2);
     return availabilityMessage(dates[1], "tomorrow");
   }
 
-  // 9. Specific weekday → next occurrence
+  // 11. Specific weekday → next occurrence
   const dayMatch = matchWeekday(text);
   if (dayMatch !== null) {
     const next = nextDateForWeekday(dayMatch);
     return availabilityMessage(next, venueDateLabel(next));
   }
 
-  // 10. "this week" / "this weekend"
-  if (/\bthis\s*weekend\b/.test(text)) {
-    return weekendMessage();
-  }
-  if (/\b(this\s*week|next\s*7\s*days)\b/.test(text)) {
-    return upcomingMessage();
-  }
+  // 12. "this week" / "this weekend"
+  if (/\bthis\s*weekend\b/.test(text)) return weekendMessage();
+  if (/\b(this\s*week|next\s*7\s*days)\b/.test(text)) return upcomingMessage();
 
-  // 11. Recommend a pitch
+  // 13. Recommend a pitch
   if (/\b(recommend|best|pick|which pitch|suggest)\b/.test(text)) {
     return await recommendMessage();
   }
 
-  // 12. Price
+  // 14. Price
   if (/\b(price|cost|how much)\b/.test(text)) {
     return {
       role: "assistant",
       content: `Every slot is ${branding.currency} ${(branding.priceFils / 1000).toFixed(0)} for 60 minutes. Active discounts are auto-applied at checkout.`,
-      suggestions: ["Any discounts?", "What's open today?"],
+      suggestions: ["Any discounts?", "Book me Friday 7pm"],
     };
   }
 
-  // 13. Booking instructions
-  if (/\b(book|reserve|how to|help me)\b/.test(text)) {
+  // 15. Booking instructions
+  if (/\b(book|reserve|how to)\b/.test(text)) {
     return {
       role: "assistant",
       content:
-        "Pick a green slot in any day card, fill the short form, and pay via MyFatoorah. The whole thing is under 60 seconds.",
+        "Tell me a day and time and I'll find an open slot — e.g. \"book me Friday 7pm pitch 2\". Or scroll the calendar and tap a green chip.",
       suggestions: [
-        "What's open today?",
         "Book me Friday 7pm",
-        "Any discounts?",
+        "Book Saturday morning",
+        "What's open today?",
       ],
     };
   }
 
-  // Default
   return defaultMessage();
 }
 
@@ -131,45 +158,127 @@ function defaultMessage(): ChatMessage {
   return {
     role: "assistant",
     content:
-      "I can find availability, list discounts, suggest a pitch, or jump you straight to a slot. Try one of these:",
+      "I can find availability, list your bookings, propose a slot to book, cancel one by ref, list discounts, and recommend a pitch. Try one of these:",
     suggestions: [
       "What's open today?",
-      "Any discounts?",
+      "My bookings",
       "Book me Friday 7pm",
-      "Recommend a pitch",
+      "Any discounts?",
     ],
   };
 }
 
-// ---------------- Helpers ----------------
+// ---------------- My bookings ----------------
 
-const WEEKDAYS = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
-
-function matchWeekday(text: string): number | null {
-  for (let i = 0; i < WEEKDAYS.length; i++) {
-    if (new RegExp(`\\b${WEEKDAYS[i]}\\b`).test(text)) return i;
+async function myBookingsMessage(ctx: Ctx): Promise<ChatMessage> {
+  if (!ctx.phone) {
+    return {
+      role: "assistant",
+      content: "I'd need to look up your phone — but I don't have a session yet.",
+    };
   }
-  return null;
+  const list = await listBookingsForCustomer(ctx.phone);
+  const upcoming = list
+    .filter((b) => b.status !== "CANCELLED" && b.slotEnd.getTime() >= Date.now())
+    .slice(0, 8);
+
+  if (upcoming.length === 0) {
+    return {
+      role: "assistant",
+      content: "No upcoming bookings on file. Want me to find you a slot?",
+      suggestions: ["What's open today?", "Book me Friday 7pm"],
+    };
+  }
+
+  return {
+    role: "assistant",
+    content:
+      upcoming.length === 1
+        ? "Here's your upcoming booking:"
+        : `Here are your ${upcoming.length} upcoming bookings:`,
+    bookingList: upcoming.map(toSummary),
+  };
 }
 
-function nextDateForWeekday(weekday: number, fromIso?: string): string {
-  const start = parseVenueDate(fromIso ?? todayAtVenue());
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
-    if (d.getUTCDay() === weekday) {
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-    }
-  }
-  return todayAtVenue();
+function toSummary(b: Booking): BookingSummary {
+  return {
+    ref: b.ref,
+    pitch: b.pitch,
+    date: b.date,
+    dateLabel: venueDateLabel(b.slotStart),
+    timeLabel: `${venueTime(b.slotStart)}–${venueTime(b.slotEnd)}`,
+    status: b.status,
+    paymentStatus: b.paymentStatus,
+    priceFils: b.priceFils,
+    discountFils: b.discountFils,
+    currency: b.currency,
+  };
 }
+
+// ---------------- Cancel / pay by ref ----------------
+
+async function cancelByRefMessage(
+  ref: string,
+  ctx: Ctx,
+): Promise<ChatMessage> {
+  const booking = await getBookingByRef(ref);
+  if (!booking) {
+    return {
+      role: "assistant",
+      content: `I couldn't find a booking with ref ${ref}.`,
+    };
+  }
+  if (ctx.phone && booking.customerPhone !== ctx.phone) {
+    return {
+      role: "assistant",
+      content: `Booking ${ref} is on a different account. I can't cancel it from here.`,
+    };
+  }
+  if (booking.status === "CANCELLED") {
+    return {
+      role: "assistant",
+      content: `${ref} is already cancelled.`,
+    };
+  }
+  return {
+    role: "assistant",
+    content: `Cancel **${ref}** — ${booking.pitch} · ${venueDateLabel(booking.slotStart)} · ${venueTime(booking.slotStart)}? This is permanent.`,
+    actions: [
+      {
+        kind: "cancel",
+        label: "Cancel this booking",
+        payload: { ref },
+        tone: "danger",
+      },
+    ],
+  };
+}
+
+async function payByRefMessage(ref: string, ctx: Ctx): Promise<ChatMessage> {
+  const booking = await getBookingByRef(ref);
+  if (!booking) {
+    return { role: "assistant", content: `Booking ${ref} not found.` };
+  }
+  if (ctx.phone && booking.customerPhone !== ctx.phone) {
+    return {
+      role: "assistant",
+      content: `Booking ${ref} is on a different account.`,
+    };
+  }
+  if (booking.paymentStatus === "PAID") {
+    return {
+      role: "assistant",
+      content: `${ref} is already paid in full.`,
+    };
+  }
+  return {
+    role: "assistant",
+    content: `${ref} — ${formatPrice(booking.priceFils - booking.discountFils, booking.currency)} due. I'll send you to MyFatoorah.`,
+    link: { href: `/pay/${ref}`, label: "Pay now" },
+  };
+}
+
+// ---------------- Booking intent ----------------
 
 interface BookingIntent {
   date: string;
@@ -178,12 +287,13 @@ interface BookingIntent {
 }
 
 function parseBookingIntent(text: string): BookingIntent | null {
-  // Must look like a booking request
-  if (!/\b(book|reserve|grab|take|get)\b/.test(text) && !/\b(at|for)\s+\d/.test(text)) {
+  if (
+    !/\b(book|reserve|grab|take|get|schedule)\b/.test(text) &&
+    !/\b(at|for)\s+\d/.test(text)
+  ) {
     return null;
   }
 
-  // Date
   let date: string | null = null;
   if (/\btoday\b|\btonight\b/.test(text)) date = todayAtVenue();
   else if (/\btomorrow\b/.test(text)) date = upcomingDates(2)[1];
@@ -193,7 +303,6 @@ function parseBookingIntent(text: string): BookingIntent | null {
   }
   if (!date) return null;
 
-  // Hour: 12h or 24h
   let hour: number | null = null;
   const twelve = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
   const twenty = text.match(/\b(\d{1,2})(?::(\d{2}))?\b(?!\s*(am|pm))/);
@@ -208,7 +317,6 @@ function parseBookingIntent(text: string): BookingIntent | null {
     if (h >= branding.openingHour && h < branding.closingHour) hour = h;
   }
 
-  // Pitch
   let pitch: string | null = null;
   for (let i = 0; i < branding.pitches.length; i++) {
     if (new RegExp(`pitch\\s*${i + 1}\\b`).test(text)) {
@@ -222,70 +330,43 @@ function parseBookingIntent(text: string): BookingIntent | null {
 
 async function bookingSuggestionMessage(
   target: BookingIntent,
+  ctx: Ctx,
 ): Promise<ChatMessage> {
   const all = await getAllPitchesAvailability(target.date);
+  const discounts = await findDiscountsForDate(target.date);
 
-  // If a specific pitch was requested
-  if (target.pitch) {
+  // Specific pitch + hour
+  if (target.pitch && target.hour !== null) {
     const slots = all.find((p) => p.pitch === target.pitch)?.slots ?? [];
-    if (target.hour !== null) {
-      const slot = slots.find((s) => s.hour === target.hour);
-      if (slot && !slot.taken && !slot.blocked && !slot.inPast) {
-        const q = new URLSearchParams({
-          date: target.date,
-          pitch: target.pitch,
-          hour: String(target.hour),
-        });
-        return {
-          role: "assistant",
-          content: `${target.pitch} at ${slot.label} on ${venueDateLabel(target.date)} — yes, that's open. Click below and I'll preselect it for you.`,
-          link: { href: `/book?${q.toString()}#details`, label: "Open this slot" },
-          suggestions: ["What's open tomorrow?", "Any discounts?"],
-        };
-      }
-      // Specific slot unavailable
-      const open = slots.filter((s) => !s.taken && !s.blocked && !s.inPast).slice(0, 4);
-      return {
-        role: "assistant",
-        content:
-          open.length === 0
-            ? `${target.pitch} is fully booked on ${venueDateLabel(target.date)}.`
-            : `${target.pitch} at ${String(target.hour).padStart(2, "0")}:00 isn't available on ${venueDateLabel(target.date)}. Open: ${open
-                .map((s) => s.label)
-                .join(", ")}.`,
-        link: {
-          href: `/book?date=${target.date}&pitch=${encodeURIComponent(target.pitch)}`,
-          label: `Browse ${target.pitch}`,
-        },
-      };
+    const slot = slots.find((s) => s.hour === target.hour);
+    if (slot && !slot.taken && !slot.blocked && !slot.inPast) {
+      return makeBookProposal(
+        target.pitch,
+        target.date,
+        target.hour,
+        discounts.length > 0 ? discounts[0] : null,
+        ctx,
+      );
     }
+    return slotMissMessage(target, slots);
   }
 
-  // No specific pitch, optionally specific hour
+  // Specific hour, no pitch — find first available pitch
   if (target.hour !== null) {
-    const candidates = all
-      .map(({ pitch, slots }) => ({
-        pitch,
-        slot: slots.find((s) => s.hour === target.hour),
-      }))
-      .filter((c) => c.slot && !c.slot.taken && !c.slot.blocked && !c.slot.inPast);
-    if (candidates.length > 0) {
-      const choice = candidates[0]!;
-      const q = new URLSearchParams({
-        date: target.date,
-        pitch: choice.pitch,
-        hour: String(target.hour),
-      });
-      return {
-        role: "assistant",
-        content: `Found one — ${choice.pitch} at ${String(target.hour).padStart(2, "0")}:00 on ${venueDateLabel(target.date)}.${
-          candidates.length > 1
-            ? ` (${candidates.length - 1} other pitch${candidates.length === 2 ? "" : "es"} also open at that time.)`
-            : ""
-        }`,
-        link: { href: `/book?${q.toString()}#details`, label: "Take this slot" },
-        suggestions: ["Any discounts?", "What's open tomorrow?"],
-      };
+    const candidate = all.find(({ slots }) =>
+      slots.some(
+        (s) =>
+          s.hour === target.hour && !s.taken && !s.blocked && !s.inPast,
+      ),
+    );
+    if (candidate) {
+      return makeBookProposal(
+        candidate.pitch,
+        target.date,
+        target.hour,
+        discounts.length > 0 ? discounts[0] : null,
+        ctx,
+      );
     }
     return {
       role: "assistant",
@@ -294,8 +375,80 @@ async function bookingSuggestionMessage(
     };
   }
 
+  // Specific pitch only — list its open hours
+  if (target.pitch) {
+    const slots = all.find((p) => p.pitch === target.pitch)?.slots ?? [];
+    const open = slots.filter((s) => !s.taken && !s.blocked && !s.inPast);
+    if (open.length === 0) {
+      return {
+        role: "assistant",
+        content: `${target.pitch} is fully booked on ${venueDateLabel(target.date)}.`,
+        link: { href: `/book?date=${target.date}`, label: "Try another day" },
+      };
+    }
+    return {
+      role: "assistant",
+      content: `${target.pitch} on ${venueDateLabel(target.date)} — open at: ${open.map((s) => s.label).join(", ")}. Tell me a time and I'll book it.`,
+      suggestions: open.slice(0, 3).map(
+        (s) => `Book ${target.pitch!.toLowerCase()} at ${s.label}`,
+      ),
+    };
+  }
+
   return availabilityMessage(target.date, venueDateLabel(target.date));
 }
+
+function makeBookProposal(
+  pitch: string,
+  date: string,
+  hour: number,
+  discount: { name: string; percentOff: number } | null,
+  ctx: Ctx,
+): ChatMessage {
+  const namePart = ctx.name ? ` for ${ctx.name}` : "";
+  const discountSuffix = discount
+    ? ` · ${discount.name} −${discount.percentOff}%`
+    : "";
+  return {
+    role: "assistant",
+    content: `${pitch} · ${venueDateLabel(date)} · ${String(hour).padStart(2, "0")}:00 is open${namePart}.${discountSuffix} Want me to lock it in?`,
+    actions: [
+      {
+        kind: "book",
+        label: "Book this slot",
+        payload: { date, hour, pitch },
+        tone: "primary",
+      },
+    ],
+    suggestions: ["My bookings", "Any discounts?"],
+  };
+}
+
+async function slotMissMessage(
+  target: BookingIntent,
+  slots: { hour: number; label: string; taken: boolean; blocked: boolean; inPast: boolean }[],
+): Promise<ChatMessage> {
+  const open = slots.filter((s) => !s.taken && !s.blocked && !s.inPast);
+  if (open.length === 0) {
+    return {
+      role: "assistant",
+      content: `${target.pitch} is fully booked on ${venueDateLabel(target.date)}.`,
+    };
+  }
+  return {
+    role: "assistant",
+    content: `${target.pitch} at ${String(target.hour).padStart(2, "0")}:00 isn't available on ${venueDateLabel(target.date)}. Open: ${open
+      .slice(0, 4)
+      .map((s) => s.label)
+      .join(", ")}.`,
+    link: {
+      href: `/book?date=${target.date}&pitch=${encodeURIComponent(target.pitch ?? "")}`,
+      label: `Browse ${target.pitch}`,
+    },
+  };
+}
+
+// ---------------- Availability + discounts + recommendations ----------------
 
 async function availabilityMessage(date: string, label: string): Promise<ChatMessage> {
   const all = await getAllPitchesAvailability(date);
@@ -319,7 +472,7 @@ async function availabilityMessage(date: string, label: string): Promise<ChatMes
   return {
     role: "assistant",
     content: [header, ...lines].join("\n"),
-    suggestions: ["Any discounts?", "Recommend a pitch", "What's open tomorrow?"],
+    suggestions: ["Book me " + label.split(" ")[0] + " 7pm", "Any discounts?"],
     link: { href: `/book?date=${date}`, label: `See ${label}` },
   };
 }
@@ -373,9 +526,7 @@ async function discountsMessage(): Promise<ChatMessage> {
   if (live.length > 0) {
     lines.push("Live now:");
     for (const d of live) {
-      lines.push(
-        `• ${d.name} — ${d.percentOff}% off (${d.validFrom} → ${d.validTo})`,
-      );
+      lines.push(`• ${d.name} — ${d.percentOff}% off (${d.validFrom} → ${d.validTo})`);
     }
   }
   const upcoming = all.filter((d) => d.validFrom > today);
@@ -383,9 +534,7 @@ async function discountsMessage(): Promise<ChatMessage> {
     lines.push("");
     lines.push("Coming soon:");
     for (const d of upcoming) {
-      lines.push(
-        `• ${d.name} — ${d.percentOff}% off, starts ${d.validFrom}`,
-      );
+      lines.push(`• ${d.name} — ${d.percentOff}% off, starts ${d.validFrom}`);
     }
   }
   return {
@@ -442,10 +591,39 @@ async function upcomingMessage(): Promise<ChatMessage> {
   };
 }
 
+// ---------------- Helpers ----------------
+
+const WEEKDAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+function matchWeekday(text: string): number | null {
+  for (let i = 0; i < WEEKDAYS.length; i++) {
+    if (new RegExp(`\\b${WEEKDAYS[i]}\\b`).test(text)) return i;
+  }
+  return null;
+}
+
+function nextDateForWeekday(weekday: number, fromIso?: string): string {
+  const start = parseVenueDate(fromIso ?? todayAtVenue());
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+    if (d.getUTCDay() === weekday) {
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    }
+  }
+  return todayAtVenue();
+}
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// Used by the page-level discount badge logic; not exposed in chat directly.
-export { findDiscountsForDate };
-export { formatPrice };
+// kept for the page-level discount badge / form helpers
+export { findDiscountsForDate, formatPrice, bookingRepository };
