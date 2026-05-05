@@ -179,8 +179,48 @@ body {
 
 /* Decorative bg layers stay behind the page content. */
 .pitch-bg > .pitch-goal,
-.pitch-bg > .pitch-ball-stage {
+.pitch-bg > .pitch-ball-stage,
+.pitch-bg > .pitch-lines,
+.pitch-bg > .pitch-floodlight {
   z-index: 0;
+}
+
+/* ---------- Field markings ---------- */
+.pitch-lines {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.85;
+}
+
+/* ---------- Corner floodlights (with subtle pulse) ---------- */
+.pitch-floodlight {
+  position: fixed;
+  width: clamp(180px, 35vw, 320px);
+  height: clamp(180px, 35vw, 320px);
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 244, 200, 0.22),
+    rgba(255, 244, 200, 0.08) 35%,
+    transparent 60%
+  );
+  filter: blur(8px);
+  animation: floodlight-pulse 6s ease-in-out infinite;
+  will-change: opacity;
+}
+.pitch-floodlight--tl { top: -90px; left: -90px; }
+.pitch-floodlight--tr { top: -90px; right: -90px; animation-delay: 1.5s; }
+.pitch-floodlight--bl { bottom: -90px; left: -90px; animation-delay: 3s; }
+.pitch-floodlight--br { bottom: -90px; right: -90px; animation-delay: 4.5s; }
+
+@keyframes floodlight-pulse {
+  0%, 100% { opacity: 0.75; }
+  50%      { opacity: 1; }
 }
 
 @keyframes ball-x {
@@ -200,7 +240,8 @@ body {
   .pitch-bg::after,
   .pitch-ball-x,
   .pitch-ball-y,
-  .pitch-ball-spin {
+  .pitch-ball-spin,
+  .pitch-floodlight {
     animation: none;
   }
 }

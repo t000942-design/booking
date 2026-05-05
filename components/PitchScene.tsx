@@ -1,13 +1,21 @@
 /**
  * Decorative background layers for the sign-in page:
- *   - One goal at the top, one at the bottom (overhead pitch view).
+ *   - Mowed-stripe pitch background (.pitch-bg, set on the wrapper).
+ *   - White field markings (penalty boxes, center circle, corner arcs).
+ *   - Four corner floodlights with a slow pulse.
+ *   - One goal at the top, one at the bottom.
  *   - A small soccer ball that bounces around the screen on independent
  *     X / Y timers (so the path doesn't visibly repeat).
- * Sits behind page content (z-index 0), pointer-events: none.
+ * All sit behind page content (z-index 0) and ignore pointer events.
  */
 export function PitchScene() {
   return (
     <>
+      <FieldLines />
+      <Floodlight position="tl" />
+      <Floodlight position="tr" />
+      <Floodlight position="bl" />
+      <Floodlight position="br" />
       <Goal side="top" />
       <Goal side="bottom" />
       <div className="pitch-ball-stage" aria-hidden>
@@ -21,6 +29,59 @@ export function PitchScene() {
       </div>
     </>
   );
+}
+
+function FieldLines() {
+  // Stretches to viewport via xMidYMid slice; lines stay crisp at 2px stroke.
+  return (
+    <svg
+      aria-hidden
+      className="pitch-lines"
+      viewBox="0 0 400 800"
+      preserveAspectRatio="xMidYMid slice"
+    >
+      <g
+        fill="none"
+        stroke="rgba(255,255,255,0.55)"
+        strokeWidth="2"
+      >
+        {/* Halfway line */}
+        <line x1="0" y1="400" x2="400" y2="400" />
+        {/* Center circle */}
+        <circle cx="200" cy="400" r="55" />
+
+        {/* Top penalty area */}
+        <rect x="80" y="0" width="240" height="90" />
+        {/* Top goal area */}
+        <rect x="140" y="0" width="120" height="38" />
+        {/* Top penalty arc (D) */}
+        <path d="M 154 90 A 50 50 0 0 0 246 90" />
+
+        {/* Bottom penalty area */}
+        <rect x="80" y="710" width="240" height="90" />
+        {/* Bottom goal area */}
+        <rect x="140" y="762" width="120" height="38" />
+        {/* Bottom penalty arc */}
+        <path d="M 154 710 A 50 50 0 0 1 246 710" />
+
+        {/* Corner arcs */}
+        <path d="M 0 9 A 9 9 0 0 0 9 0" />
+        <path d="M 391 0 A 9 9 0 0 0 400 9" />
+        <path d="M 0 791 A 9 9 0 0 1 9 800" />
+        <path d="M 391 800 A 9 9 0 0 1 400 791" />
+      </g>
+      {/* Center spot + penalty spots */}
+      <g fill="rgba(255,255,255,0.7)">
+        <circle cx="200" cy="400" r="3.5" />
+        <circle cx="200" cy="60" r="3" />
+        <circle cx="200" cy="740" r="3" />
+      </g>
+    </svg>
+  );
+}
+
+function Floodlight({ position }: { position: "tl" | "tr" | "bl" | "br" }) {
+  return <div aria-hidden className={`pitch-floodlight pitch-floodlight--${position}`} />;
 }
 
 function BallSvg({ className }: { className?: string }) {
@@ -38,8 +99,6 @@ function BallSvg({ className }: { className?: string }) {
           <stop offset="100%" stopColor="#b8b8b8" />
         </radialGradient>
       </defs>
-
-      {/* Sphere */}
       <circle
         cx="32"
         cy="32"
@@ -48,33 +107,18 @@ function BallSvg({ className }: { className?: string }) {
         stroke="#1a1a1a"
         strokeWidth="0.9"
       />
-
-      {/* Central pentagon */}
       <polygon points="32,21 42,29 38,41 26,41 22,29" fill="#1a1a1a" />
-
-      {/* Five rim pentagons */}
       <polygon points="32,5 37,9 35,14 29,14 27,9" fill="#1a1a1a" />
       <polygon points="55,18 58,24 53,30 48,26 49,20" fill="#1a1a1a" />
       <polygon points="50,49 52,44 49,39 43,42 41,47" fill="#1a1a1a" />
       <polygon points="14,49 23,47 21,42 15,39 12,44" fill="#1a1a1a" />
       <polygon points="9,18 6,24 11,30 16,26 15,20" fill="#1a1a1a" />
-
-      {/* Connecting lines from central pentagon to rim pentagons */}
       <line x1="32" y1="21" x2="32" y2="14" stroke="#1a1a1a" strokeWidth="1.6" />
       <line x1="42" y1="29" x2="49" y2="26" stroke="#1a1a1a" strokeWidth="1.6" />
       <line x1="38" y1="41" x2="43" y2="47" stroke="#1a1a1a" strokeWidth="1.6" />
       <line x1="26" y1="41" x2="21" y2="47" stroke="#1a1a1a" strokeWidth="1.6" />
       <line x1="22" y1="29" x2="15" y2="26" stroke="#1a1a1a" strokeWidth="1.6" />
-
-      {/* Subtle highlight to feel spherical */}
-      <ellipse
-        cx="22"
-        cy="20"
-        rx="8"
-        ry="4"
-        fill="white"
-        opacity="0.18"
-      />
+      <ellipse cx="22" cy="20" rx="8" ry="4" fill="white" opacity="0.18" />
     </svg>
   );
 }
