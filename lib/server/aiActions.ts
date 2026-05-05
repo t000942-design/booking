@@ -8,7 +8,6 @@ import {
 } from "@/lib/ai/scheduleParser";
 import type { ChatAction, ChatMessage, SchedulePlan } from "@/lib/ai/types";
 import { getSession } from "@/lib/auth/session";
-import { branding } from "@/lib/config/branding";
 import { venueDateLabel, venueTime } from "@/lib/domain/slots";
 import { bookingRepository } from "@/lib/storage";
 import {
@@ -208,5 +207,3 @@ export async function applyScheduleAction(input: string): Promise<ApplyResult> {
   revalidatePath("/book");
   return { ok: true, applied, skipped };
 }
-
-export const _unused = branding.pitches;
