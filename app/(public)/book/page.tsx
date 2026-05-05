@@ -7,6 +7,7 @@ import {
 } from "@/lib/domain/slots";
 import { getAllPitchesAvailability } from "@/lib/services/bookings";
 import type { Slot } from "@/lib/domain/types";
+import { AIAssistant } from "./AIAssistant";
 import { BookingForm } from "./BookingForm";
 
 interface PageProps {
@@ -70,6 +71,8 @@ export default async function BookPage({ searchParams }: PageProps) {
           />
         ))}
       </section>
+
+      <AIAssistant />
 
       <section
         id="details"
@@ -155,18 +158,37 @@ function DayCard({
   selectedPitch: string;
   selectedHour: number | null;
 }) {
+  const totalSlots = pitches.reduce((sum, p) => sum + p.slots.length, 0);
+  const openSlots = pitches.reduce(
+    (sum, p) => sum + p.slots.filter((s) => !s.taken && !s.blocked && !s.inPast).length,
+    0,
+  );
+  const fillPct = totalSlots > 0 ? Math.round(((totalSlots - openSlots) / totalSlots) * 100) : 0;
+
   return (
     <div
       id={`day-${date}`}
-      className="field-card rounded-2xl p-4 text-pitch-950 scroll-mt-20"
+      className="field-card rounded-2xl bg-gradient-to-br from-white to-pitch-50 p-4 text-pitch-950 shadow-lg shadow-pitch-900/10 scroll-mt-20 transition hover:shadow-xl"
     >
-      <header className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-base font-bold tracking-tight">
-          {isToday ? "Today" : venueDateLabel(date).split(" ")[0]}{" "}
-          <span className="text-pitch-900/60">
-            · {venueDateLabel(date).slice(venueDateLabel(date).indexOf(" ") + 1)}
+      <header className="mb-3">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-base font-bold tracking-tight">
+            {isToday ? "Today" : venueDateLabel(date).split(" ")[0]}{" "}
+            <span className="text-pitch-900/60">
+              · {venueDateLabel(date).slice(venueDateLabel(date).indexOf(" ") + 1)}
+            </span>
+          </h3>
+          <span className="text-[11px] font-semibold text-pitch-900/70">
+            {openSlots} open
           </span>
-        </h3>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-pitch-100">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-pitch-500 to-pitch-700 transition-all"
+            style={{ width: `${fillPct}%` }}
+            aria-label={`${fillPct}% booked`}
+          />
+        </div>
       </header>
       <ul className="flex flex-col gap-3">
         {pitches.map(({ pitch, slots }) => {

@@ -7,6 +7,7 @@ import {
 } from "@/lib/services/bookings";
 import { formatPrice } from "@/lib/utils/format";
 import type { Booking, Slot } from "@/lib/domain/types";
+import { AISlotManager } from "./AISlotManager";
 import { BookingActions } from "./BookingActions";
 import { SlotControls } from "./SlotControls";
 
@@ -48,14 +49,17 @@ export default async function AdminTodayPage() {
       </header>
 
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Booked" value={String(active.length)} />
-        <Stat label="Open" value={String(openCount)} />
-        <Stat label="Blocked" value={String(blockedCount)} />
+        <Stat label="Booked" value={String(active.length)} tone="brand" />
+        <Stat label="Open" value={String(openCount)} tone="success" />
+        <Stat label="Blocked" value={String(blockedCount)} tone="muted" />
         <Stat
           label="Expected"
           value={formatPrice(expectedFils, branding.currency)}
+          tone="amber"
         />
       </section>
+
+      <AISlotManager />
 
       {pitchesAvail.map(({ pitch, slots }) => (
         <PitchSection
@@ -215,13 +219,32 @@ function BlockedRow({ slot }: { slot: Slot }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  tone = "brand",
+}: {
+  label: string;
+  value: string;
+  tone?: "brand" | "success" | "muted" | "amber";
+}) {
+  const palette: Record<string, string> = {
+    brand: "from-pitch-500/10 to-pitch-500/0 text-pitch-900",
+    success: "from-emerald-400/15 to-emerald-400/0 text-emerald-900",
+    muted: "from-slate-400/10 to-slate-400/0 text-slate-800",
+    amber: "from-amber-400/15 to-amber-400/0 text-amber-900",
+  };
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-      <div className="text-[10px] font-medium uppercase tracking-widest text-slate-500">
+    <div
+      className={
+        "rounded-xl border border-slate-200 bg-gradient-to-br bg-white px-3 py-3 " +
+        palette[tone]
+      }
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-widest opacity-60">
         {label}
       </div>
-      <div className="mt-0.5 text-lg font-bold tracking-tight">{value}</div>
+      <div className="mt-0.5 text-xl font-bold tracking-tight">{value}</div>
     </div>
   );
 }
