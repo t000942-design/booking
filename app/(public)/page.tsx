@@ -1,7 +1,9 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { branding } from "@/lib/config/branding";
 import { getSession } from "@/lib/auth/session";
+import { signOutAction } from "@/lib/server/authActions";
 import { PitchScene } from "@/components/PitchScene";
+import { Button } from "@/components/ui/Button";
 import { SignInForm } from "./SignInForm";
 import { SignUpForm } from "./SignUpForm";
 import { AuthTabs, type AuthMode } from "./AuthTabs";
@@ -12,8 +14,6 @@ interface PageProps {
 
 export default async function HomePage({ searchParams }: PageProps) {
   const session = await getSession();
-  if (session?.role === "admin") redirect("/admin");
-  if (session?.role === "customer") redirect("/book");
 
   const params = await searchParams;
   const mode: AuthMode = params.mode === "signup" ? "signup" : "signin";
@@ -27,10 +27,42 @@ export default async function HomePage({ searchParams }: PageProps) {
         </h1>
       </section>
 
+      {session ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/95 p-4 text-emerald-950 shadow-md backdrop-blur">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
+            You&apos;re signed in
+          </div>
+          <div className="mt-0.5 text-sm font-semibold">
+            {session.role === "admin" ? "Owner · " : ""}
+            <span className="font-mono">{session.phone}</span>
+            {session.name ? ` · ${session.name}` : ""}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Link
+              href={session.role === "admin" ? "/admin" : "/book"}
+              className="flex-1"
+            >
+              <Button size="md" variant="primary" className="w-full">
+                Continue →
+              </Button>
+            </Link>
+            <form action={signOutAction}>
+              <Button size="md" variant="outline" type="submit">
+                Sign out
+              </Button>
+            </form>
+          </div>
+        </section>
+      ) : null}
+
       <section className="field-card rounded-2xl p-5 text-pitch-950">
         <AuthTabs active={mode} />
         <h2 className="mt-4 text-lg font-bold tracking-tight">
-          {mode === "signup" ? "Create your account" : "Welcome back"}
+          {session
+            ? "Or sign in as someone else"
+            : mode === "signup"
+            ? "Create your account"
+            : "Welcome back"}
         </h2>
         <p className="mt-1 text-sm text-pitch-900/70">
           {mode === "signup"
