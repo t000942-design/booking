@@ -9,6 +9,7 @@ import { getDayAvailability } from "@/lib/services/bookings";
 import { findDiscountsForDate } from "@/lib/services/discounts";
 import { bookingRepository } from "@/lib/storage";
 import type { Discount, Slot } from "@/lib/domain/types";
+import { LobbyBackdrop } from "@/components/LobbyBackdrop";
 import { AIAssistant } from "./AIAssistant";
 import { BookingForm } from "./BookingForm";
 
@@ -105,6 +106,7 @@ export default async function BookPage({ searchParams }: PageProps) {
 
   return (
     <div className="flex flex-col gap-5 pt-2">
+      <LobbyBackdrop />
       <div className="text-center">
         <h1 className="text-3xl font-black tracking-tight drop-shadow">
           Pick your pitch

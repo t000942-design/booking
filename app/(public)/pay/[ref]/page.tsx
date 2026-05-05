@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
+import { LobbyBackdrop } from "@/components/LobbyBackdrop";
 import { branding } from "@/lib/config/branding";
 import { requireCustomer } from "@/lib/auth/guards";
 import { venueDateLabel, venueTime } from "@/lib/domain/slots";
@@ -27,6 +28,7 @@ export default async function PayPage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col gap-5 pt-4">
+      <LobbyBackdrop />
       <div className="text-center">
         <h1 className="text-3xl font-black tracking-tight drop-shadow">Checkout</h1>
         <p className="mt-1 text-sm text-white/85">

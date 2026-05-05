@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { LobbyBackdrop } from "@/components/LobbyBackdrop";
 import { branding } from "@/lib/config/branding";
 import { venueDateLabel, venueTime } from "@/lib/domain/slots";
 import { getBookingByRef } from "@/lib/services/bookings";
@@ -32,6 +33,7 @@ export default async function ConfirmationPage({ params }: PageProps) {
 
   return (
     <div className="flex flex-col gap-5 pt-2">
+      <LobbyBackdrop />
       <Confetti />
 
       <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-pitch-700 via-pitch-800 to-pitch-950 p-6 text-white shadow-2xl">

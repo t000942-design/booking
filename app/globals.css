@@ -235,13 +235,81 @@ body {
   to { transform: rotate(720deg); }
 }
 
+/* ---------- Modern aurora background for post-login pages ---------- */
+.lobby-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 600px at 20% 25%, rgba(22, 163, 74, 0.28), transparent 60%),
+    radial-gradient(1100px 700px at 80% 80%, rgba(14, 165, 233, 0.22), transparent 60%),
+    radial-gradient(900px 500px at 70% 10%, rgba(251, 191, 36, 0.12), transparent 60%),
+    linear-gradient(135deg, #04080d 0%, #0a1f1a 45%, #04080d 100%);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.lobby-bg::before {
+  content: "";
+  position: absolute;
+  width: 70vw;
+  height: 70vw;
+  top: -15vh;
+  left: -20vw;
+  background: radial-gradient(closest-side, rgba(34, 197, 94, 0.55), transparent 70%);
+  filter: blur(70px);
+  animation: lobby-blob-1 22s ease-in-out infinite;
+  will-change: transform;
+}
+
+.lobby-bg::after {
+  content: "";
+  position: absolute;
+  width: 80vw;
+  height: 80vw;
+  bottom: -25vh;
+  right: -25vw;
+  background: radial-gradient(closest-side, rgba(56, 189, 248, 0.40), transparent 70%);
+  filter: blur(90px);
+  animation: lobby-blob-2 28s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Subtle dot grid for depth */
+.lobby-bg-dots {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: 0 0;
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+
+@keyframes lobby-blob-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(18vw, 8vh) scale(1.12); }
+  66% { transform: translate(-6vw, 20vh) scale(0.88); }
+}
+@keyframes lobby-blob-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-18vw, -10vh) scale(1.10); }
+  66% { transform: translate(10vw, -22vh) scale(0.92); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pitch-bg::before,
   .pitch-bg::after,
   .pitch-ball-x,
   .pitch-ball-y,
   .pitch-ball-spin,
-  .pitch-floodlight {
+  .pitch-floodlight,
+  .lobby-bg::before,
+  .lobby-bg::after {
     animation: none;
   }
 }

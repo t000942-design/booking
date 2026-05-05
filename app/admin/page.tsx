@@ -129,7 +129,7 @@ export default async function AdminPage({ searchParams }: PageProps) {
           tone="success"
         />
         <KpiCard
-          label="Blocked"
+          label="Canceled"
           value={String(blockedCount)}
           tone="muted"
         />
@@ -364,7 +364,7 @@ function BlockedRow({ slot }: { slot: Slot }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
-        <Badge tone="muted">Blocked</Badge>
+        <Badge tone="muted">Canceled</Badge>
         {slot.blockReason ? (
           <span className="ml-2 text-sm text-slate-600">{slot.blockReason}</span>
         ) : null}
