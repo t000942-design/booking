@@ -32,20 +32,29 @@ export default async function PublicLayout({
 
   return (
     <div className="pitch-bg min-h-screen text-white">
-      <header className="mx-auto flex w-full max-w-md items-center justify-between px-4 pt-5 pb-2">
-        <BrandMark className="text-white" />
-        {session?.role === "customer" ? (
-          <form action={signOutAction}>
-            <Button
-              variant="secondary"
-              size="sm"
-              type="submit"
-              className="inline-flex items-center gap-1.5"
-            >
-              <SignOutIcon />
-              Sign out
-            </Button>
-          </form>
+      {/* Sticky brand + sign-out so it stays reachable while scrolling. */}
+      <header className="sticky top-0 z-30 mx-auto w-full max-w-md border-b border-white/10 bg-pitch-950/55 px-4 py-3 backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-3">
+          <BrandMark className="text-white" />
+          {session ? (
+            <form action={signOutAction}>
+              <Button
+                variant="secondary"
+                size="md"
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-4 shadow-lg"
+              >
+                <SignOutIcon />
+                Sign out
+              </Button>
+            </form>
+          ) : null}
+        </div>
+        {session ? (
+          <div className="mt-1 text-[11px] text-white/65">
+            Signed in as <span className="font-mono">{session.phone}</span>
+            {session.name ? ` · ${session.name}` : ""}
+          </div>
         ) : null}
       </header>
       <main className="mx-auto w-full max-w-md px-4 pb-16 pt-4">
