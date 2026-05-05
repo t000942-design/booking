@@ -22,14 +22,19 @@ function createRepository(): BookingRepository {
   if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return new SupabaseBookingRepository();
   }
+  // No Supabase configured — fall back to in-memory. In production this means
+  // bookings vanish on cold start, which is fine for a demo deploy. Warn so
+  // we don't silently lose data in a "real" prod.
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "[storage] SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in production.",
+    console.warn(
+      "[storage] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set — running with in-memory storage. " +
+        "Bookings will not survive cold starts. Set the env vars in your hosting provider to persist data.",
+    );
+  } else {
+    console.warn(
+      "[storage] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set — using in-memory storage.",
     );
   }
-  console.warn(
-    "[storage] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set — using in-memory storage.",
-  );
   const repo = new InMemoryBookingRepository();
   seedDevBookings(repo);
   return repo;

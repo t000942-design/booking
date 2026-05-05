@@ -33,8 +33,13 @@ export async function startPaymentAction(
     redirect(`/booking/${ref}`);
   }
 
+  // Vercel auto-sets VERCEL_URL on every deployment (no protocol).
+  // Fallback chain: explicit APP_URL → NEXT_PUBLIC_APP_URL → VERCEL_URL → localhost.
   const baseUrl =
-    process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    process.env.APP_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    "http://localhost:3000";
   const callbackUrl = `${baseUrl}/pay/${ref}/complete`;
 
   let intent;
