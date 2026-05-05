@@ -22,7 +22,7 @@ export default async function PayPage({ params }: PageProps) {
   if (booking.paymentStatus === "PAID") redirect(`/booking/${ref}`);
   if (booking.status === "CANCELLED") redirect("/book");
 
-  const dueFils = booking.priceFils - booking.refundFils;
+  const dueFils = booking.priceFils - booking.discountFils - booking.refundFils;
   const isStubbed = !process.env.MYFATOORAH_API_TOKEN;
 
   return (
@@ -71,15 +71,37 @@ export default async function PayPage({ params }: PageProps) {
       </section>
 
       <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-pitch-700 to-pitch-950 p-5 text-white shadow-xl">
-        <div className="flex items-baseline justify-between">
-          <div className="text-[11px] font-semibold uppercase tracking-widest text-white/70">
-            Total due
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between text-sm text-white/85">
+            <span>Slot price</span>
+            <span>{formatPrice(booking.priceFils, booking.currency)}</span>
           </div>
-          <div className="text-3xl font-black tracking-tight">
-            {formatPrice(dueFils, booking.currency)}
+          {booking.discountFils > 0 ? (
+            <div className="flex items-center justify-between text-sm text-amber-200">
+              <span className="flex items-center gap-1.5">
+                <span className="text-base">🏷</span>
+                {booking.discountName ?? "Discount"}
+              </span>
+              <span>−{formatPrice(booking.discountFils, booking.currency)}</span>
+            </div>
+          ) : null}
+          {booking.refundFils > 0 ? (
+            <div className="flex items-center justify-between text-sm text-white/70">
+              <span>Already refunded</span>
+              <span>−{formatPrice(booking.refundFils, booking.currency)}</span>
+            </div>
+          ) : null}
+          <div className="mt-1 h-px bg-white/15" />
+          <div className="flex items-baseline justify-between pt-1">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-white/70">
+              Total due
+            </div>
+            <div className="text-3xl font-black tracking-tight">
+              {formatPrice(dueFils, booking.currency)}
+            </div>
           </div>
         </div>
-        <p className="mt-2 text-xs text-white/80">
+        <p className="mt-3 text-xs text-white/80">
           Payments are handled by{" "}
           <span className="font-semibold">MyFatoorah</span> — KNET, Visa,
           Mastercard, Apple Pay, Google Pay.

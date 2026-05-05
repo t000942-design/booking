@@ -20,6 +20,10 @@ export interface Booking {
   slotEnd: Date;
   priceFils: number;
   currency: string;
+  /** Discount applied at booking time (in fils). 0 if none. */
+  discountFils: number;
+  /** Name of the discount that was applied, e.g. "Black Friday". */
+  discountName: string | null;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
   paidAt: Date | null;
@@ -30,6 +34,27 @@ export interface Booking {
   refundedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * A promotional discount applied automatically at booking time.
+ * Stored in the same in-memory repo today; promoted to a real table on Day 2.
+ */
+export interface Discount {
+  id: string;
+  name: string;
+  description: string | null;
+  /** 1–100. Applied as a percentage off the listed slot price. */
+  percentOff: number;
+  /** YYYY-MM-DD inclusive. */
+  validFrom: string;
+  validTo: string;
+  /** Empty = all days; otherwise 0..6 (Sun..Sat). */
+  daysOfWeek: number[];
+  /** Empty = all pitches; otherwise pitch names. */
+  pitches: string[];
+  active: boolean;
+  createdAt: Date;
 }
 
 export interface BlockedSlot {

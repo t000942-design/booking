@@ -3,6 +3,7 @@ import type {
   Booking,
   BookingStatus,
   CreateBookingInput,
+  Discount,
 } from "@/lib/domain/types";
 
 export interface BookingFilter {
@@ -22,7 +23,14 @@ export interface BlockedSlotFilter {
  */
 export interface BookingRepository {
   // Bookings
-  create(input: CreateBookingInput & { priceFils: number; currency: string }): Promise<Booking>;
+  create(
+    input: CreateBookingInput & {
+      priceFils: number;
+      currency: string;
+      discountFils: number;
+      discountName: string | null;
+    },
+  ): Promise<Booking>;
   findByRef(ref: string): Promise<Booking | null>;
   list(filter?: BookingFilter): Promise<Booking[]>;
   isSlotTaken(date: string, hour: number, pitch: string): Promise<boolean>;
@@ -47,4 +55,12 @@ export interface BookingRepository {
   unblockSlot(id: string): Promise<boolean>;
   listBlockedSlots(filter?: BlockedSlotFilter): Promise<BlockedSlot[]>;
   isSlotBlocked(date: string, hour: number, pitch: string): Promise<BlockedSlot | null>;
+
+  // Discounts
+  createDiscount(
+    input: Omit<Discount, "id" | "createdAt">,
+  ): Promise<Discount>;
+  listDiscounts(): Promise<Discount[]>;
+  deleteDiscount(id: string): Promise<boolean>;
+  setDiscountActive(id: string, active: boolean): Promise<Discount | null>;
 }

@@ -6,6 +6,7 @@ import type {
   Booking,
   BookingStatus,
   CreateBookingInput,
+  Discount,
 } from "@/lib/domain/types";
 import type {
   BlockedSlotFilter,
@@ -18,11 +19,17 @@ const ACTIVE_STATUSES: BookingStatus[] = ["PENDING", "CONFIRMED", "DONE"];
 export class InMemoryBookingRepository implements BookingRepository {
   private bookings = new Map<string, Booking>();
   private blocks = new Map<string, BlockedSlot>();
+  private discounts = new Map<string, Discount>();
 
   // ----- Bookings -----
 
   async create(
-    input: CreateBookingInput & { priceFils: number; currency: string },
+    input: CreateBookingInput & {
+      priceFils: number;
+      currency: string;
+      discountFils: number;
+      discountName: string | null;
+    },
   ): Promise<Booking> {
     const taken = await this.isSlotTaken(input.date, input.hour, input.pitch);
     if (taken) {
@@ -50,6 +57,8 @@ export class InMemoryBookingRepository implements BookingRepository {
       slotEnd: slotEndUtc(input.date, input.hour),
       priceFils: input.priceFils,
       currency: input.currency,
+      discountFils: input.discountFils,
+      discountName: input.discountName,
       status: "PENDING",
       paymentStatus: "UNPAID",
       paidAt: null,
@@ -208,6 +217,39 @@ export class InMemoryBookingRepository implements BookingRepository {
       if (b.date === date && b.hour === hour && b.pitch === pitch) return b;
     }
     return null;
+  }
+
+  // ----- Discounts -----
+
+  async createDiscount(
+    input: Omit<Discount, "id" | "createdAt">,
+  ): Promise<Discount> {
+    const id = `dsc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const discount: Discount = {
+      ...input,
+      id,
+      createdAt: new Date(),
+    };
+    this.discounts.set(id, discount);
+    return discount;
+  }
+
+  async listDiscounts(): Promise<Discount[]> {
+    return Array.from(this.discounts.values()).sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+  }
+
+  async deleteDiscount(id: string): Promise<boolean> {
+    return this.discounts.delete(id);
+  }
+
+  async setDiscountActive(id: string, active: boolean): Promise<Discount | null> {
+    const existing = this.discounts.get(id);
+    if (!existing) return null;
+    const updated: Discount = { ...existing, active };
+    this.discounts.set(id, updated);
+    return updated;
   }
 
   private findByRefSync(ref: string): Booking | null {

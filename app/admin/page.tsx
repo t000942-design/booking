@@ -5,17 +5,20 @@ import {
   getAllPitchesAvailability,
   listTodaysBookings,
 } from "@/lib/services/bookings";
+import { listDiscounts } from "@/lib/services/discounts";
 import { formatPrice } from "@/lib/utils/format";
 import type { Booking, Slot } from "@/lib/domain/types";
 import { AISlotManager } from "./AISlotManager";
 import { BookingActions } from "./BookingActions";
+import { DiscountManager } from "./DiscountManager";
 import { SlotControls } from "./SlotControls";
 
 export default async function AdminTodayPage() {
   const today = todayAtVenue();
-  const [bookings, pitchesAvail] = await Promise.all([
+  const [bookings, pitchesAvail, discounts] = await Promise.all([
     listTodaysBookings(),
     getAllPitchesAvailability(today),
+    listDiscounts(),
   ]);
 
   const active = bookings.filter((b) => b.status !== "CANCELLED");
@@ -60,6 +63,8 @@ export default async function AdminTodayPage() {
       </section>
 
       <AISlotManager />
+
+      <DiscountManager discounts={discounts} />
 
       {pitchesAvail.map(({ pitch, slots }) => (
         <PitchSection

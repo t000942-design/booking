@@ -27,10 +27,19 @@ export async function createBooking(input: unknown): Promise<Booking> {
     );
   }
   const dto: CreateBookingDTO = parsed.data;
+  const { computeDiscountFils, findApplicableDiscount } = await import(
+    "./discounts"
+  );
+  const discount = await findApplicableDiscount(dto.date, dto.pitch);
+  const discountFils = discount
+    ? computeDiscountFils(branding.priceFils, discount.percentOff)
+    : 0;
   return bookingRepository.create({
     ...dto,
     priceFils: branding.priceFils,
     currency: branding.currency,
+    discountFils,
+    discountName: discount?.name ?? null,
   });
 }
 

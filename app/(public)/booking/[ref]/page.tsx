@@ -92,9 +92,28 @@ export default async function ConfirmationPage({ params }: PageProps) {
         </Row>
 
         <Row icon={<PriceIcon />} label="Price">
-          <div className="font-semibold">
-            {formatPrice(booking.priceFils, booking.currency)}
-          </div>
+          {booking.discountFils > 0 ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-pitch-900/40 line-through">
+                  {formatPrice(booking.priceFils, booking.currency)}
+                </span>
+                <span className="font-bold text-emerald-700">
+                  {formatPrice(
+                    booking.priceFils - booking.discountFils,
+                    booking.currency,
+                  )}
+                </span>
+              </div>
+              <div className="text-[11px] font-semibold text-amber-700">
+                🏷 {booking.discountName ?? "Discount"} applied
+              </div>
+            </>
+          ) : (
+            <div className="font-semibold">
+              {formatPrice(booking.priceFils, booking.currency)}
+            </div>
+          )}
           {booking.paymentStatus === "PAID" ? (
             <div className="text-xs text-emerald-700">
               Paid via MyFatoorah

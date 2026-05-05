@@ -6,7 +6,9 @@ import {
   venueDateLabel,
 } from "@/lib/domain/slots";
 import { getAllPitchesAvailability } from "@/lib/services/bookings";
-import type { Slot } from "@/lib/domain/types";
+import { findDiscountsForDate } from "@/lib/services/discounts";
+import { bookingRepository } from "@/lib/storage";
+import type { Discount, Slot } from "@/lib/domain/types";
 import { AIAssistant } from "./AIAssistant";
 import { BookingForm } from "./BookingForm";
 
@@ -66,6 +68,7 @@ export default async function BookPage({ searchParams }: PageProps) {
     days.map(async (date) => ({
       date,
       pitches: await getAllPitchesAvailability(date),
+      discounts: await findDiscountsForDate(date),
     })),
   );
 
@@ -81,6 +84,13 @@ export default async function BookPage({ searchParams }: PageProps) {
     selectedPitch &&
     availableHours.includes(selectedHour);
 
+  // "You have an unpaid booking" banner
+  const myBookings = await bookingRepository.list({
+    query: session.phone,
+    status: "PENDING",
+  });
+  const pendingBooking = myBookings.find((b) => b.customerPhone === session.phone);
+
   return (
     <div className="flex flex-col gap-5 pt-2">
       <div className="text-center">
@@ -92,15 +102,39 @@ export default async function BookPage({ searchParams }: PageProps) {
         </p>
       </div>
 
+      {pendingBooking ? (
+        <a
+          href={`/pay/${pendingBooking.ref}`}
+          className="block rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-amber-900 shadow-md transition hover:bg-amber-200"
+        >
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-300/70">
+              <ClockIcon />
+            </div>
+            <div className="flex-1 leading-tight">
+              <div className="text-xs font-semibold uppercase tracking-wider">
+                Awaiting payment
+              </div>
+              <div className="text-sm">
+                {pendingBooking.pitch} · {venueDateLabel(pendingBooking.slotStart)} ·{" "}
+                {String(pendingBooking.hour).padStart(2, "0")}:00
+              </div>
+            </div>
+            <span className="text-sm font-bold">Resume →</span>
+          </div>
+        </a>
+      ) : null}
+
       <DayJumpBar days={days} today={today} selected={selectedDate} />
 
       <section className="flex flex-col gap-3">
-        {calendar.map(({ date, pitches }) => (
+        {calendar.map(({ date, pitches, discounts }) => (
           <DayCard
             key={date}
             date={date}
             isToday={date === today}
             pitches={pitches}
+            discounts={discounts}
             selectedDate={selectedDate}
             selectedPitch={selectedPitch}
             selectedHour={selectedHour}
@@ -230,6 +264,7 @@ function DayCard({
   date,
   isToday,
   pitches,
+  discounts,
   selectedDate,
   selectedPitch,
   selectedHour,
@@ -237,6 +272,7 @@ function DayCard({
   date: string;
   isToday: boolean;
   pitches: { pitch: string; slots: Slot[] }[];
+  discounts: Discount[];
   selectedDate: string;
   selectedPitch: string;
   selectedHour: number | null;
@@ -247,6 +283,10 @@ function DayCard({
     0,
   );
   const fillPct = totalSlots > 0 ? Math.round(((totalSlots - openSlots) / totalSlots) * 100) : 0;
+  const topDiscount = discounts.reduce<Discount | null>(
+    (best, d) => (!best || d.percentOff > best.percentOff ? d : best),
+    null,
+  );
 
   return (
     <div
@@ -254,7 +294,7 @@ function DayCard({
       className="field-card rounded-3xl bg-gradient-to-br from-white to-pitch-50 p-4 text-pitch-950 shadow-lg shadow-pitch-900/10 scroll-mt-20 transition hover:shadow-xl"
     >
       <header className="mb-3">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-base font-bold tracking-tight">
             {isToday ? (
               <span className="rounded-md bg-pitch-700 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-white">
@@ -271,6 +311,12 @@ function DayCard({
             {openSlots} open
           </span>
         </div>
+        {topDiscount ? (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
+            <span>🏷</span>
+            {topDiscount.name} · {topDiscount.percentOff}% OFF
+          </div>
+        ) : null}
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-pitch-100">
           <div
             className="h-full rounded-full bg-gradient-to-r from-pitch-500 to-pitch-700 transition-all duration-500"
@@ -311,6 +357,23 @@ function DayCard({
         })}
       </ul>
     </div>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
   );
 }
 
