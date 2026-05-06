@@ -143,7 +143,7 @@ export function AIAssistant() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Tell Coach what to do…"
-                className="h-11 w-full rounded-xl border border-pitch-100 bg-white px-3 text-sm outline-none focus:border-pitch-500 focus:ring-2 focus:ring-pitch-500/20"
+                className="h-11 w-full rounded-xl border border-pitch-100 bg-white px-3 text-sm text-pitch-950 caret-pitch-700 outline-none placeholder:text-pitch-400 focus:border-pitch-500 focus:ring-2 focus:ring-pitch-500/20"
                 disabled={pending}
               />
               <Button type="submit" size="md" disabled={pending || !input.trim()}>

@@ -1,7 +1,14 @@
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { branding } from "@/lib/config/branding";
-import { listBookingsForCustomer } from "@/lib/services/bookings";
+import {
+  cancelBooking,
+  createBooking,
+  getBookingByRef,
+  listBookingsForCustomer,
+} from "@/lib/services/bookings";
 import { venueDateLabel, venueTime } from "@/lib/domain/slots";
+import { formatPrice } from "@/lib/utils/format";
 import type { Booking } from "@/lib/domain/types";
 import { buildContext, type BuiltContext } from "./contextBuilder";
 import { formatHitsForPrompt } from "./knowledge";
@@ -14,28 +21,31 @@ interface Ctx {
 }
 
 const PITCH_NAMES = branding.pitches as readonly string[];
+const REF_REGEX = new RegExp(`^${branding.bookingPrefix}-[A-Z0-9]{6}$`);
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const HOUR_MIN = branding.openingHour;
+const HOUR_MAX = branding.closingHour - 1;
 
 const ActionSchema = z.object({
   kind: z.enum(["book", "cancel", "pay"]),
   label: z.string().min(1).max(60),
   payload: z.object({
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
-    hour: z
-      .number()
-      .int()
-      .min(branding.openingHour)
-      .max(branding.closingHour - 1)
-      .optional(),
+    date: z.string().regex(DATE_REGEX).optional(),
+    hour: z.number().int().min(HOUR_MIN).max(HOUR_MAX).optional(),
     pitch: z.enum(PITCH_NAMES as [string, ...string[]]).optional(),
-    ref: z
-      .string()
-      .regex(new RegExp(`^${branding.bookingPrefix}-[A-Z0-9]{6}$`))
-      .optional(),
+    ref: z.string().regex(REF_REGEX).optional(),
   }),
   tone: z.enum(["primary", "danger", "muted"]).optional(),
+});
+
+const BookNowSchema = z.object({
+  date: z.string().regex(DATE_REGEX),
+  hour: z.number().int().min(HOUR_MIN).max(HOUR_MAX),
+  pitch: z.enum(PITCH_NAMES as [string, ...string[]]),
+});
+
+const CancelNowSchema = z.object({
+  ref: z.string().regex(REF_REGEX),
 });
 
 const ResponseSchema = z.object({
@@ -49,13 +59,19 @@ const ResponseSchema = z.object({
     .optional(),
   actions: z.array(ActionSchema).max(3).optional(),
   show_my_bookings: z.boolean().optional(),
+  // Auto-execute fields. When set, the server runs the operation BEFORE
+  // returning the message; the LLM's "content" is replaced with a server-
+  // generated confirmation (or a graceful failure message).
+  book_now: BookNowSchema.optional(),
+  cancel_now: CancelNowSchema.optional(),
 });
 
 export type LlmResponse = z.infer<typeof ResponseSchema>;
 
 /**
- * LLM-driven brain. Returns a ChatMessage with text + widgets, or throws so
- * the caller can fall back to the rule-based assistant.
+ * LLM-driven brain. Returns a ChatMessage with text + widgets. May also
+ * place or cancel a booking on the user's behalf when the LLM signals
+ * unambiguous intent. Throws so the caller can fall back to rule-based.
  */
 export async function think(question: string, ctx: Ctx = {}): Promise<ChatMessage> {
   const built = await buildContext(question, ctx);
@@ -75,7 +91,17 @@ export async function think(question: string, ctx: Ctx = {}): Promise<ChatMessag
 
   const parsed = parseAndValidate(raw);
 
-  // Build the widget message from the validated LLM output.
+  // ---- Auto-execute book_now -----------------------------------------
+  if (parsed.book_now) {
+    return await executeBookNow(parsed.book_now, ctx);
+  }
+
+  // ---- Auto-execute cancel_now ---------------------------------------
+  if (parsed.cancel_now) {
+    return await executeCancelNow(parsed.cancel_now, ctx);
+  }
+
+  // ---- Standard reply with widgets -----------------------------------
   const message: ChatMessage = {
     role: "assistant",
     content: parsed.content,
@@ -92,15 +118,108 @@ export async function think(question: string, ctx: Ctx = {}): Promise<ChatMessag
       tone: a.tone,
     }));
   }
-
-  // The server (not the LLM) populates the actual bookingList. The LLM
-  // only asks for it via show_my_bookings.
   if (parsed.show_my_bookings && ctx.phone) {
     message.bookingList = await fetchUpcomingBookings(ctx.phone);
   }
-
   return message;
 }
+
+// ---------------- Auto-execute helpers ----------------
+
+async function executeBookNow(
+  slot: z.infer<typeof BookNowSchema>,
+  ctx: Ctx,
+): Promise<ChatMessage> {
+  if (!ctx.phone) {
+    return {
+      role: "assistant",
+      content: "I need you signed in before I can lock that slot in. Tap Sign in and ask me again.",
+    };
+  }
+  if (!ctx.name) {
+    return {
+      role: "assistant",
+      content:
+        "I need a name on the booking — sign out and use Sign Up so I can save it on your account, then tell me again and I'll book it.",
+    };
+  }
+
+  try {
+    const booking = await createBooking({
+      customerName: ctx.name,
+      customerPhone: ctx.phone,
+      date: slot.date,
+      hour: slot.hour,
+      pitch: slot.pitch,
+    });
+    revalidatePath("/book");
+
+    const due = booking.priceFils - booking.discountFils;
+    return {
+      role: "assistant",
+      content: `Done — **${booking.ref}** is yours.\n${booking.pitch} · ${venueDateLabel(booking.slotStart)} · ${venueTime(booking.slotStart)}–${venueTime(booking.slotEnd)}.\nTotal due: ${formatPrice(due, booking.currency)}. Pay on arrival.`,
+      bookingList: [toSummary(booking)],
+      actions: [
+        {
+          kind: "cancel",
+          label: "Cancel this booking",
+          payload: { ref: booking.ref },
+          tone: "danger",
+        },
+      ],
+      suggestions: ["My bookings", "Book another slot"],
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "the slot wasn't available";
+    return {
+      role: "assistant",
+      content: `Couldn't lock ${slot.pitch} on ${slot.date} at ${pad2(slot.hour)}:00 — ${reason.toLowerCase()}. Want me to find an alternative?`,
+      suggestions: [
+        `What's open on ${slot.date}?`,
+        "Recommend a pitch",
+      ],
+      link: { href: `/book?date=${slot.date}`, label: "Open the calendar" },
+    };
+  }
+}
+
+async function executeCancelNow(
+  payload: z.infer<typeof CancelNowSchema>,
+  ctx: Ctx,
+): Promise<ChatMessage> {
+  if (!ctx.phone) {
+    return {
+      role: "assistant",
+      content: `Sign in first and I'll cancel ${payload.ref} for you.`,
+    };
+  }
+
+  const existing = await getBookingByRef(payload.ref);
+  if (!existing) {
+    return { role: "assistant", content: `I couldn't find a booking with ref ${payload.ref}.` };
+  }
+  if (existing.customerPhone !== ctx.phone) {
+    return {
+      role: "assistant",
+      content: `Booking ${payload.ref} is on a different account — I can't cancel it from here.`,
+    };
+  }
+  if (existing.status === "CANCELLED") {
+    return { role: "assistant", content: `${payload.ref} is already cancelled.` };
+  }
+
+  await cancelBooking(payload.ref);
+  revalidatePath("/book");
+  revalidatePath(`/booking/${payload.ref}`);
+
+  return {
+    role: "assistant",
+    content: `Cancelled **${payload.ref}** — ${existing.pitch} · ${venueDateLabel(existing.slotStart)} · ${venueTime(existing.slotStart)}. The slot is back in the calendar.`,
+    suggestions: ["What's open today?", "My bookings"],
+  };
+}
+
+// ---------------- Prompt construction ----------------
 
 function buildSystemPrompt(): string {
   return `You are "Coach", the AI assistant for ${branding.pitchName}, a 7-a-side football pitch in ${branding.location}. You help customers check availability, book slots, cancel bookings, and answer questions about the venue.
@@ -117,35 +236,59 @@ Reply STRUCTURE — return ONLY a single JSON object with these fields:
   "content": string,                                 // the spoken reply (markdown-light, max ~6 short lines)
   "suggestions"?: string[],                          // 0–4 short follow-up chips the user can tap
   "link"?: { "href": string, "label": string },     // optional deep-link button (use "/book?date=YYYY-MM-DD" for calendar)
-  "actions"?: Action[],                              // up to 3 buttons that perform an action
-  "show_my_bookings"?: boolean                       // set true to render the user's upcoming bookings as cards (only if MyBookings block is in context)
+  "actions"?: Action[],                              // up to 3 buttons that perform an action (used when you want the user to confirm with a tap)
+  "show_my_bookings"?: boolean,                      // set true to render the user's upcoming bookings as cards (only if MyBookings block is in context)
+  "book_now"?: { "date": "YYYY-MM-DD", "hour": int, "pitch": string },   // see BOOK NOW rules below
+  "cancel_now"?: { "ref": "${branding.bookingPrefix}-XXXXXX" }            // see CANCEL NOW rules below
 }
 
 Where Action is:
 {
   "kind": "book" | "cancel" | "pay",
-  "label": string,                                   // button text, e.g. "Book Friday 7pm on Pitch 1"
+  "label": string,
   "payload": {
-    "date"?: "YYYY-MM-DD",                          // required for kind=book
-    "hour"?: integer in [${branding.openingHour}, ${branding.closingHour - 1}],
+    "date"?: "YYYY-MM-DD",
+    "hour"?: integer in [${HOUR_MIN}, ${HOUR_MAX}],
     "pitch"?: one of ${PITCH_NAMES.map((p) => `"${p}"`).join(" | ")},
-    "ref"?: "${branding.bookingPrefix}-XXXXXX"      // required for kind=cancel and kind=pay
+    "ref"?: "${branding.bookingPrefix}-XXXXXX"
   },
   "tone"?: "primary" | "danger" | "muted"
 }
 
-Action RULES:
-- Only propose a "book" action when the slot is in the Availability block as OPEN. Never propose a fully-booked or past slot.
-- Only propose a "cancel" action when the user explicitly asked to cancel and the ref appears in their bookings.
-- "pay" is currently disabled (online payment off) — don't emit pay actions; tell them to settle on arrival.
-- If the user gave a specific time + pitch and it's open, propose ONE book action. If they gave only a time, suggest the first open pitch at that hour. If they gave a date only, list options as text + a link, no action.
+BOOK NOW (auto-execute) — set "book_now" ONLY when ALL of these hold:
+- The user expressed a clear booking intent in this message ("book me", "reserve", "lock it in", "yes do it", "I want", "أريد أن أحجز", etc.)
+- They gave a specific date, hour, AND pitch (or you can infer them unambiguously: e.g. "book Friday 7pm on pitch 1" → date=next Friday, hour=19, pitch="Pitch 1")
+- The slot is listed as OPEN in the AVAILABILITY block (not taken, not blocked, not in the past)
+- The user is signed in (SESSION block says "Signed in: yes" with a name)
+- Hour is in [${HOUR_MIN}, ${HOUR_MAX}] and pitch is one of: ${PITCH_NAMES.map((p) => `"${p}"`).join(", ")}
+When you set book_now, the server creates the booking and writes its own confirmation — your "content" field will be REPLACED. So just include a brief best-guess line (e.g. "Locking it in…").
+DO NOT also include a "book" action when book_now is set.
+
+If ANY condition fails (slot taken, user not signed in, no name, hour ambiguous, pitch missing) — do NOT set book_now. Instead either:
+- Use an "actions" book button so the user confirms with a tap, OR
+- Reply in text with options + a /book?date=... link.
+
+CANCEL NOW (auto-execute) — set "cancel_now" ONLY when ALL of these hold:
+- The user explicitly asked to cancel (e.g. "cancel KO-ABC123", "drop my Friday booking", "yes cancel it")
+- A booking ref of the form ${branding.bookingPrefix}-XXXXXX is referenced (either typed by the user or unambiguously identifiable from "USER'S BOOKINGS")
+- The booking exists in USER'S BOOKINGS or REFERENCED BOOKING and is not already CANCELLED
+
+When set, the server cancels and overrides your content. DO NOT also include a "cancel" action when cancel_now is set.
+
+Action RULES (when you DO use the actions array instead of book_now/cancel_now):
+- Only propose a "book" action when the slot is OPEN in Availability. Never for fully-booked or past slots.
+- Only propose a "cancel" action when the user asked to cancel and the ref appears in their bookings.
+- "pay" is currently disabled (online payment off) — never emit pay actions; tell users to settle on arrival.
+- If the user gave a specific time + pitch and it's open AND they're signed in with a name → prefer book_now.
+- If the user gave a specific time only (no pitch) → propose ONE book action for the first open pitch at that hour.
+- If the user gave a date only → list options as text + a /book?date=... link, no action.
 
 NEVER include any text outside the JSON object. NEVER use code fences. Output the JSON object directly.`;
 }
 
 function buildUserPrompt(question: string, built: BuiltContext, ctx: Ctx): string {
   const sessionLine = ctx.phone
-    ? `Signed in: yes${ctx.name ? ` (name: ${ctx.name})` : ""} · phone: ${ctx.phone}`
+    ? `Signed in: yes${ctx.name ? ` (name: ${ctx.name})` : " — but NO name on file (cannot book until they Sign Up)"} · phone: ${ctx.phone}`
     : "Signed in: no";
   const intentLine =
     built.intentHints.length > 0
@@ -169,9 +312,7 @@ function buildUserPrompt(question: string, built: BuiltContext, ctx: Ctx): strin
     parts.push(`REFERENCED BOOKING:\n${built.bookingByRefBlock}`);
   }
 
-  parts.push(
-    `Write the JSON reply now. Keep "content" short and natural.`,
-  );
+  parts.push(`Write the JSON reply now. Keep "content" short and natural.`);
   return parts.join("\n\n---\n\n");
 }
 
@@ -221,4 +362,8 @@ function toSummary(b: Booking): BookingSummary {
     discountFils: b.discountFils,
     currency: b.currency,
   };
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
 }
