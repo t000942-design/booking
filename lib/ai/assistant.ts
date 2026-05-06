@@ -164,35 +164,68 @@ async function askAssistantRuleBased(
     };
   }
 
-  // 15. Booking instructions
-  if (/\b(book|reserve|how to)\b/.test(text)) {
+  // 15. Vague booking intent — show today's open slots as one-tap Book buttons
+  // so the user can book directly even without specifying date/time.
+  if (/\b(book|reserve|how to|slot)\b/.test(text)) {
+    return await openSlotsMessage(
+      "Tell me which one you want — tap and it's yours:",
+    );
+  }
+
+  return await defaultMessage();
+}
+
+/**
+ * Default + booking-intent fallback: shows today's first few open slots as
+ * action buttons. The user can book in one tap without saying a magic phrase.
+ * If today is fully booked, falls back to tomorrow.
+ */
+async function openSlotsMessage(intro: string): Promise<ChatMessage> {
+  const today = todayAtVenue();
+  const dates = [today, upcomingDates(2)[1]];
+
+  for (const date of dates) {
+    const all = await getAllPitchesAvailability(date);
+    const candidates: { pitch: string; hour: number; label: string }[] = [];
+    for (const { pitch, slots } of all) {
+      for (const s of slots) {
+        if (!s.taken && !s.blocked && !s.inPast) {
+          candidates.push({ pitch, hour: s.hour, label: s.label });
+        }
+      }
+    }
+    if (candidates.length === 0) continue;
+
+    // Spread choice: prefer evening hours, mix pitches.
+    candidates.sort((a, b) => Math.abs(a.hour - 19) - Math.abs(b.hour - 19));
+    const top = candidates.slice(0, 3);
+
+    const dayWord = date === today ? "today" : venueDateLabel(date);
     return {
       role: "assistant",
-      content:
-        "Tell me a day and time and I'll find an open slot — e.g. \"book me Friday 7pm pitch 2\". Or scroll the calendar and tap a green chip.",
-      suggestions: [
-        "Book me Friday 7pm",
-        "Book Saturday morning",
-        "What's open today?",
-      ],
+      content: `${intro}\n\nOpen ${dayWord}:`,
+      actions: top.map((c) => ({
+        kind: "book" as const,
+        label: `${c.pitch} · ${c.label}`,
+        payload: { date, hour: c.hour, pitch: c.pitch },
+        tone: "primary" as const,
+      })),
+      suggestions: ["Any discounts?", "Recommend a pitch", "My bookings"],
+      link: { href: `/book?date=${date}`, label: "Open the calendar" },
     };
   }
 
-  return defaultMessage();
-}
-
-function defaultMessage(): ChatMessage {
+  // No open slots in the next 2 days — fall back to a calendar link.
   return {
     role: "assistant",
-    content:
-      "I can find availability, list your bookings, propose a slot to book, cancel one by ref, list discounts, and recommend a pitch. Try one of these:",
-    suggestions: [
-      "What's open today?",
-      "My bookings",
-      "Book me Friday 7pm",
-      "Any discounts?",
-    ],
+    content: "Both today and tomorrow are fully booked. Take a look at the calendar — there's space later in the week.",
+    suggestions: ["What's open this weekend?", "My bookings"],
+    link: { href: `/book`, label: "Open the calendar" },
   };
+}
+
+async function defaultMessage(): Promise<ChatMessage> {
+  return openSlotsMessage("Hey — tap a slot to book it, or tell me what you need:");
 }
 
 // ---------------- My bookings ----------------

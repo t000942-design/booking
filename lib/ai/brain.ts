@@ -152,7 +152,7 @@ async function executeBookNow(
       hour: slot.hour,
       pitch: slot.pitch,
     });
-    revalidatePath("/book");
+    safeRevalidate("/book");
 
     const due = booking.priceFils - booking.discountFils;
     return {
@@ -209,8 +209,8 @@ async function executeCancelNow(
   }
 
   await cancelBooking(payload.ref);
-  revalidatePath("/book");
-  revalidatePath(`/booking/${payload.ref}`);
+  safeRevalidate("/book");
+  safeRevalidate(`/booking/${payload.ref}`);
 
   return {
     role: "assistant",
@@ -317,8 +317,9 @@ function buildUserPrompt(question: string, built: BuiltContext, ctx: Ctx): strin
 }
 
 function parseAndValidate(raw: string): LlmResponse {
-  // Some models wrap JSON in code fences despite instructions.
-  const cleaned = raw
+  // Some models wrap JSON in code fences despite instructions; some free
+  // models also dribble a bit of prose around the object.
+  let cleaned = raw
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
     .trim();
@@ -327,7 +328,22 @@ function parseAndValidate(raw: string): LlmResponse {
   try {
     json = JSON.parse(cleaned);
   } catch {
-    throw new OpenRouterError(`LLM returned invalid JSON: ${cleaned.slice(0, 200)}`);
+    // Salvage: extract the largest top-level {...} block.
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      cleaned = match[0];
+      try {
+        json = JSON.parse(cleaned);
+      } catch {
+        throw new OpenRouterError(
+          `LLM returned invalid JSON: ${cleaned.slice(0, 200)}`,
+        );
+      }
+    } else {
+      throw new OpenRouterError(
+        `LLM returned invalid JSON: ${cleaned.slice(0, 200)}`,
+      );
+    }
   }
 
   const result = ResponseSchema.safeParse(json);
@@ -366,4 +382,17 @@ function toSummary(b: Booking): BookingSummary {
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/**
+ * revalidatePath throws when called outside a Next.js request context
+ * (e.g. from smoke tests). Cache invalidation must never break the
+ * user-visible response, so swallow these errors.
+ */
+function safeRevalidate(path: string): void {
+  try {
+    revalidatePath(path);
+  } catch {
+    // ignore — running outside Next.js context
+  }
 }
