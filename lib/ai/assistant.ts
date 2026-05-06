@@ -16,6 +16,7 @@ import { bookingRepository } from "@/lib/storage";
 import { formatPrice } from "@/lib/utils/format";
 import type { Booking } from "@/lib/domain/types";
 import type { BookingSummary, ChatMessage } from "./types";
+import { think } from "./brain";
 
 interface Ctx {
   /** Phone of the signed-in customer, if any. */
@@ -25,10 +26,33 @@ interface Ctx {
 }
 
 /**
- * Day 1: rule-based assistant ("Coach"). Day 2 swap: replace askAssistant with
- * an LLM call that has tool access to the same services. Same return shape.
+ * Coach — primary entrypoint. When OPENROUTER_API_KEY is set, the LLM brain
+ * (lib/ai/brain.ts) drives the reply with conversational text + widgets.
+ * The rule-based path remains as a failsafe for: (1) no API key configured,
+ * (2) LLM error / invalid JSON / timeout, (3) empty input.
  */
 export async function askAssistant(
+  question: string,
+  ctx: Ctx = {},
+): Promise<ChatMessage> {
+  const text = question.toLowerCase().trim();
+  if (!text) return defaultMessage();
+
+  if (process.env.OPENROUTER_API_KEY) {
+    try {
+      return await think(question, ctx);
+    } catch (err) {
+      console.warn(
+        "[ai] LLM brain failed, falling back to rule-based:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return askAssistantRuleBased(question, ctx);
+}
+
+async function askAssistantRuleBased(
   question: string,
   ctx: Ctx = {},
 ): Promise<ChatMessage> {
