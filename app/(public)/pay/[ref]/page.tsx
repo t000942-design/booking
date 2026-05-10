@@ -145,26 +145,34 @@ export default async function PayPage({ params }: PageProps) {
         ) : null}
 
         {isStubbed ? (
-          <div className="mt-3 rounded-lg bg-white/10 p-3 text-[11px] leading-relaxed text-amber-100">
-            <div className="font-semibold">Stub mode · no real card charge</div>
-            <div className="mt-1">
-              Click any button to simulate a successful payment. To hit the
-              real MyFatoorah hosted page (and enter test cards), set{" "}
-              <code className="font-mono">MYFATOORAH_API_TOKEN</code> in your
-              env vars and redeploy.
+          <div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-200/95 p-3 text-amber-950 shadow-lg">
+            <div className="text-base font-black uppercase tracking-wider">
+              ⚠ STUB MODE · NOT HITTING MYFATOORAH
             </div>
+            <p className="mt-1 text-[11px] leading-relaxed">
+              The deploy can&apos;t see <code className="font-mono">MYFATOORAH_API_TOKEN</code>
+              {" "}— clicking Pay will simulate a successful charge and send you
+              straight to the confirmation page <strong>without</strong> a card
+              entry screen.
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed">
+              Fix on Vercel → Settings → Environment Variables → add
+              {" "}<code className="font-mono">MYFATOORAH_API_TOKEN</code>{" "}
+              for <strong>all environments</strong> → Save → Deployments →
+              Redeploy.
+            </p>
           </div>
         ) : (
-          <div className="mt-3 rounded-lg bg-white/10 p-3 text-[11px] leading-relaxed text-emerald-100">
-            <div className="font-semibold">
-              Live mode · {paymentMode === "direct" ? "direct" : "edge function"} →
-              MyFatoorah sandbox
+          <div className="mt-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-emerald-100">
+            <div className="font-bold">
+              ✓ Live mode ({paymentMode === "direct" ? "direct" : "edge"}) ·
+              clicking a method redirects to MyFatoorah&apos;s hosted page
             </div>
-            <details className="mt-1">
-              <summary className="cursor-pointer">Show test cards</summary>
+            <details className="mt-1.5 text-[11px]">
+              <summary className="cursor-pointer font-semibold">Test cards</summary>
               <ul className="mt-1 list-disc pl-4 font-mono text-[10px]">
-                <li>KNET · 0000000001 · expiry 09/25 · OTP 1111</li>
-                <li>VISA / MasterCard · 4005550000000001 · 05/26 · CVV 123</li>
+                <li>KNET · 0000000001 · 09/25 · OTP 1111</li>
+                <li>VISA / MC · 4005550000000001 · 05/26 · CVV 123</li>
                 <li>Mada · 5123456789012346 · 12/26 · CVV 123</li>
               </ul>
             </details>
