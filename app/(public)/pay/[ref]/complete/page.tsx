@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { requireCustomer } from "@/lib/auth/guards";
 import { getBookingByRef } from "@/lib/services/bookings";
 import { completePaymentAction } from "@/lib/server/paymentActions";
+import { BookingExpired } from "../BookingExpired";
 
 interface PageProps {
   params: Promise<{ ref: string }>;
@@ -28,8 +29,12 @@ export default async function PaymentCompletePage({
   const search = await searchParams;
 
   const booking = await getBookingByRef(ref);
-  if (!booking) notFound();
-  if (booking.customerPhone !== session.phone) redirect("/book");
+  if (!booking) {
+    return <BookingExpired ref={ref} reason="not-found" />;
+  }
+  if (booking.customerPhone !== session.phone) {
+    return <BookingExpired ref={ref} reason="wrong-account" />;
+  }
 
   const paymentIdParam = pickString(search.paymentId);
   const idParam = pickString(search.Id);

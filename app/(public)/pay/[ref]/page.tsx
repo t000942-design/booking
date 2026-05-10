@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { LobbyBackdrop } from "@/components/LobbyBackdrop";
 import { branding } from "@/lib/config/branding";
@@ -9,6 +9,7 @@ import { getBookingByRef } from "@/lib/services/bookings";
 import { detectPaymentMode, paymentClient } from "@/lib/payments";
 import { formatPrice } from "@/lib/utils/format";
 import type { PaymentMethod } from "@/lib/payments";
+import { BookingExpired } from "./BookingExpired";
 import { PaymentMethodButtons } from "./PaymentForm";
 
 interface PageProps {
@@ -22,8 +23,22 @@ export default async function PayPage({ params }: PageProps) {
   const { ref } = await params;
 
   const booking = await getBookingByRef(ref);
-  if (!booking) notFound();
-  if (booking.customerPhone !== session.phone) redirect("/book");
+  if (!booking) {
+    return (
+      <>
+        <LobbyBackdrop />
+        <BookingExpired ref={ref} reason="not-found" />
+      </>
+    );
+  }
+  if (booking.customerPhone !== session.phone) {
+    return (
+      <>
+        <LobbyBackdrop />
+        <BookingExpired ref={ref} reason="wrong-account" />
+      </>
+    );
+  }
   if (booking.paymentStatus === "PAID") redirect(`/booking/${ref}`);
   if (booking.status === "CANCELLED") redirect("/book");
 
