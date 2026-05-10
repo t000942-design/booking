@@ -38,6 +38,9 @@ export interface CreateIntentArgs {
   customerPhone: string;
   /** Where the gateway should send the customer back. */
   callbackUrl: string;
+  /** Optional server-to-server webhook URL — MyFatoorah POSTs status
+   *  updates here independently of the customer's browser redirect. */
+  webhookUrl?: string;
   /** When set, ExecutePayment runs against this method directly and the
    *  hosted page goes straight to that gateway (e.g. KNET). */
   paymentMethodId?: number;

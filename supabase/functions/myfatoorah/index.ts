@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
             ErrorUrl: body.callbackUrl,
             CustomerReference: body.bookingRef,
             Language: "en",
+            ...(body.webhookUrl ? { WebhookEndpoint: body.webhookUrl } : {}),
           }),
         });
         return passthrough(r);

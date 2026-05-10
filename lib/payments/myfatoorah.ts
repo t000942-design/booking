@@ -156,6 +156,7 @@ export function createMyFatoorahClient(): PaymentClient {
               ErrorUrl: args.callbackUrl,
               CustomerReference: args.bookingRef,
               Language: "en",
+              ...(args.webhookUrl ? { WebhookEndpoint: args.webhookUrl } : {}),
             })) as ExecuteResponse)
           : await edgeFetch<ExecuteResponse>("execute", {
               amount: args.amountFils / 1000,
@@ -165,6 +166,7 @@ export function createMyFatoorahClient(): PaymentClient {
               customerPhone: args.customerPhone,
               callbackUrl: args.callbackUrl,
               bookingRef: args.bookingRef,
+              webhookUrl: args.webhookUrl,
             });
 
       return {

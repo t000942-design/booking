@@ -51,6 +51,9 @@ export async function startPaymentAction(
   const rawMethod = String(formData.get("paymentMethodId") ?? "");
   const paymentMethodId = /^\d+$/.test(rawMethod) ? Number(rawMethod) : undefined;
 
+  // Server-to-server webhook URL — same origin as the redirect.
+  const webhookUrl = `${baseUrl}/api/webhooks/myfatoorah`;
+
   let intent;
   try {
     intent = await paymentClient.createIntent({
@@ -60,6 +63,7 @@ export async function startPaymentAction(
       customerName: booking.customerName,
       customerPhone: booking.customerPhone,
       callbackUrl,
+      webhookUrl,
       paymentMethodId,
     });
   } catch (err) {
