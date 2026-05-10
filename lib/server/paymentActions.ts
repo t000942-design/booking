@@ -42,15 +42,20 @@ export async function startPaymentAction(
     "http://localhost:3000";
   const callbackUrl = `${baseUrl}/pay/${ref}/complete`;
 
+  // Optional: a specific PaymentMethodId chosen on the pay page (KNET / Apple Pay).
+  const rawMethod = String(formData.get("paymentMethodId") ?? "");
+  const paymentMethodId = /^\d+$/.test(rawMethod) ? Number(rawMethod) : undefined;
+
   let intent;
   try {
     intent = await paymentClient.createIntent({
       bookingRef: booking.ref,
-      amountFils: booking.priceFils - booking.refundFils,
+      amountFils: booking.priceFils - booking.discountFils - booking.refundFils,
       currency: booking.currency,
       customerName: booking.customerName,
       customerPhone: booking.customerPhone,
       callbackUrl,
+      paymentMethodId,
     });
   } catch (err) {
     console.error("[payments] createIntent failed:", err);

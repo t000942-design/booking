@@ -8,4 +8,10 @@ export const paymentClient: PaymentClient =
   g.__paymentClient ??
   (g.__paymentClient = createMyFatoorahClient());
 
-export type { PaymentClient, PaymentIntent, PaymentStatusResult } from "./types";
+export type {
+  CreateIntentArgs,
+  PaymentClient,
+  PaymentIntent,
+  PaymentMethod,
+  PaymentStatusResult,
+} from "./types";

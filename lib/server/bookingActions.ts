@@ -40,8 +40,8 @@ export async function createBookingAction(
 
   try {
     const booking = await createBooking(dto);
-    // Payment disabled for now — go straight to the confirmation page.
-    redirect(`/booking/${booking.ref}`);
+    // Hand off to MyFatoorah hosted checkout — KNET, Apple Pay, etc.
+    redirect(`/pay/${booking.ref}`);
   } catch (err) {
     if (err instanceof BookingValidationError) {
       const fieldErrors: Record<string, string> = {};

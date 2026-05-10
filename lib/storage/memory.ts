@@ -59,11 +59,9 @@ export class InMemoryBookingRepository implements BookingRepository {
       currency: input.currency,
       discountFils: input.discountFils,
       discountName: input.discountName,
-      // Online payment is disabled for now; bookings confirm immediately and
-      // are settled on arrival. Payment fields stay on the model so they can
-      // be re-enabled by flipping the createBookingAction redirect back to
-      // /pay/[ref] and switching this status to "PENDING".
-      status: "CONFIRMED",
+      // Booking is held as PENDING/UNPAID until MyFatoorah confirms payment
+      // on the callback (markPaid flips status → CONFIRMED, paymentStatus → PAID).
+      status: "PENDING",
       paymentStatus: "UNPAID",
       paidAt: null,
       paymentRef: null,
