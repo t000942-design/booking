@@ -126,6 +126,24 @@ export class InMemoryBookingRepository implements BookingRepository {
     return updated;
   }
 
+  async applyDiscount(
+    ref: string,
+    discountFils: number,
+    discountName: string | null,
+  ): Promise<Booking | null> {
+    const existing = this.findByRefSync(ref);
+    if (!existing) return null;
+    const capped = Math.min(Math.max(0, discountFils), existing.priceFils);
+    const updated: Booking = {
+      ...existing,
+      discountFils: capped,
+      discountName,
+      updatedAt: new Date(),
+    };
+    this.bookings.set(ref, updated);
+    return updated;
+  }
+
   async markPaid(ref: string, paymentRef: string): Promise<Booking | null> {
     const existing = this.findByRefSync(ref);
     if (!existing) return null;
@@ -226,6 +244,14 @@ export class InMemoryBookingRepository implements BookingRepository {
   async createDiscount(
     input: Omit<Discount, "id" | "createdAt">,
   ): Promise<Discount> {
+    // Reject duplicate codes (case-insensitive — code is already canonical).
+    if (input.code) {
+      for (const existing of this.discounts.values()) {
+        if (existing.code === input.code) {
+          throw new Error(`Coupon code ${input.code} already exists.`);
+        }
+      }
+    }
     const id = `dsc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const discount: Discount = {
       ...input,

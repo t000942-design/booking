@@ -31,6 +31,7 @@ export async function createDiscountAction(
   const percentOff = Number(formData.get("percentOff") ?? NaN);
   const validFrom = String(formData.get("validFrom") ?? "").trim();
   const validTo = String(formData.get("validTo") ?? "").trim();
+  const code = String(formData.get("code") ?? "").trim();
   const daysOfWeek = (formData.getAll("daysOfWeek") as string[])
     .map((d) => Number(d))
     .filter((d) => Number.isFinite(d) && d >= 0 && d <= 6);
@@ -43,6 +44,7 @@ export async function createDiscountAction(
       validFrom,
       validTo,
       daysOfWeek,
+      code: code || null,
     });
     revalidatePath("/admin");
     revalidatePath("/book");
@@ -52,6 +54,12 @@ export async function createDiscountAction(
       return {
         error: err.message,
         fieldErrors: { [err.field]: err.message },
+      };
+    }
+    if (err instanceof Error && err.message.includes("already exists")) {
+      return {
+        error: err.message,
+        fieldErrors: { code: err.message },
       };
     }
     throw err;

@@ -119,6 +119,24 @@ export function DiscountManager({ discounts }: { discounts: Discount[] }) {
               disabled={pending}
             />
           </Field>
+          <Field
+            label="Coupon code (optional)"
+            htmlFor="d-code"
+            hint="If set, customers must type this on /pay to redeem (e.g. SUMMER10). Leave blank to auto-apply by date / day."
+            error={fieldErrors.code}
+            className="mt-3"
+          >
+            <Input
+              id="d-code"
+              name="code"
+              placeholder="SUMMER10"
+              autoCapitalize="characters"
+              maxLength={32}
+              disabled={pending}
+              invalid={Boolean(fieldErrors.code)}
+              className="font-mono uppercase tracking-widest"
+            />
+          </Field>
           <fieldset className="mt-3">
             <legend className="mb-1.5 text-xs font-medium text-slate-700">
               Days (leave none for every day)
@@ -170,6 +188,15 @@ export function DiscountManager({ discounts }: { discounts: Discount[] }) {
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{d.name}</span>
+                  {d.code ? (
+                    <span className="rounded bg-pitch-100 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest text-pitch-900">
+                      {d.code}
+                    </span>
+                  ) : (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-900">
+                      Auto
+                    </span>
+                  )}
                   {!d.active ? (
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                       Paused

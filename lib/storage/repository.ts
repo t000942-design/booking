@@ -41,6 +41,13 @@ export interface BookingRepository {
     fullRefund: boolean,
   ): Promise<Booking | null>;
 
+  /** Set the discount on an existing booking (used by coupon redemption). */
+  applyDiscount(
+    ref: string,
+    discountFils: number,
+    discountName: string | null,
+  ): Promise<Booking | null>;
+
   // Payments
   markPaid(ref: string, paymentRef: string): Promise<Booking | null>;
   markPaymentFailed(ref: string): Promise<Booking | null>;

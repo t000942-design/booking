@@ -53,6 +53,9 @@ export interface Discount {
   daysOfWeek: number[];
   /** Empty = all pitches; otherwise pitch names. */
   pitches: string[];
+  /** Optional coupon code. When present, this discount is NOT auto-applied —
+   *  the customer has to enter the code on the checkout page to redeem it. */
+  code: string | null;
   active: boolean;
   createdAt: Date;
 }

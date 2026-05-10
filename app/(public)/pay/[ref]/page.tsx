@@ -10,6 +10,7 @@ import { detectPaymentMode, paymentClient } from "@/lib/payments";
 import { formatPrice } from "@/lib/utils/format";
 import type { PaymentMethod } from "@/lib/payments";
 import { BookingExpired } from "./BookingExpired";
+import { CouponForm } from "./CouponForm";
 import { PaymentMethodButtons } from "./PaymentForm";
 
 interface PageProps {
@@ -142,6 +143,15 @@ export default async function PayPage({ params }: PageProps) {
               {formatPrice(dueFils, booking.currency)}
             </div>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <CouponForm
+            refCode={booking.ref}
+            appliedName={booking.discountName}
+            appliedFils={booking.discountFils}
+            currency={booking.currency}
+          />
         </div>
 
         <p className="mt-3 text-xs text-white/80">

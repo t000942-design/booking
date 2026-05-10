@@ -62,6 +62,7 @@ type DiscountRow = {
   valid_to: string;
   days_of_week: number[];
   pitches: string[];
+  code: string | null;
   active: boolean;
   created_at: string;
 };
@@ -115,6 +116,7 @@ function discountFromRow(r: DiscountRow): Discount {
     validTo: r.valid_to,
     daysOfWeek: r.days_of_week,
     pitches: r.pitches,
+    code: r.code ?? null,
     active: r.active,
     createdAt: new Date(r.created_at),
   };
@@ -269,6 +271,27 @@ export class SupabaseBookingRepository implements BookingRepository {
     return data ? bookingFromRow(data) : null;
   }
 
+  async applyDiscount(
+    ref: string,
+    discountFils: number,
+    discountName: string | null,
+  ): Promise<Booking | null> {
+    const existing = await this.findByRef(ref);
+    if (!existing) return null;
+    const capped = Math.min(Math.max(0, discountFils), existing.priceFils);
+    const { data, error } = await this.sb
+      .from("bookings")
+      .update({
+        discount_fils: capped,
+        discount_name: discountName,
+      })
+      .eq("ref", ref)
+      .select("*")
+      .maybeSingle<BookingRow>();
+    if (error) throw error;
+    return data ? bookingFromRow(data) : null;
+  }
+
   async applyRefund(
     ref: string,
     refundFils: number,
@@ -375,11 +398,17 @@ export class SupabaseBookingRepository implements BookingRepository {
         valid_to: input.validTo,
         days_of_week: input.daysOfWeek,
         pitches: input.pitches,
+        code: input.code,
         active: input.active,
       })
       .select("*")
       .single<DiscountRow>();
-    if (error) throw error;
+    if (error) {
+      if (error.code === "23505") {
+        throw new Error(`Coupon code ${input.code} already exists.`);
+      }
+      throw error;
+    }
     return discountFromRow(data);
   }
 

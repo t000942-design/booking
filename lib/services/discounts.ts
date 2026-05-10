@@ -10,6 +10,8 @@ export interface DiscountInput {
   validTo: string;
   daysOfWeek?: number[];
   pitches?: string[];
+  /** Optional coupon code. If set, the discount is redeem-only. */
+  code?: string | null;
 }
 
 export class DiscountValidationError extends Error {
@@ -20,6 +22,10 @@ export class DiscountValidationError extends Error {
     super(message);
     this.name = "DiscountValidationError";
   }
+}
+
+export function normalizeCouponCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/\s+/g, "");
 }
 
 export async function createDiscount(input: DiscountInput): Promise<Discount> {
@@ -40,6 +46,17 @@ export async function createDiscount(input: DiscountInput): Promise<Discount> {
   if (input.validTo < input.validFrom)
     throw new DiscountValidationError("validTo", "End must be after start.");
 
+  let code: string | null = null;
+  if (input.code && input.code.trim().length > 0) {
+    code = normalizeCouponCode(input.code);
+    if (!/^[A-Z0-9]{2,32}$/.test(code)) {
+      throw new DiscountValidationError(
+        "code",
+        "Code must be 2–32 letters or digits.",
+      );
+    }
+  }
+
   return bookingRepository.createDiscount({
     name,
     description: input.description?.trim() || null,
@@ -48,6 +65,7 @@ export async function createDiscount(input: DiscountInput): Promise<Discount> {
     validTo: input.validTo,
     daysOfWeek: input.daysOfWeek ?? [],
     pitches: input.pitches ?? [],
+    code,
     active: true,
   });
 }
@@ -68,30 +86,49 @@ export async function toggleDiscount(
 }
 
 /**
- * Returns the best (largest %) active discount that applies to the given
- * (date, pitch) tuple, or null if none.
+ * Returns the best (largest %) AUTO-APPLIED discount that fits the given
+ * (date, pitch) tuple. Discounts with a coupon code are excluded — those
+ * have to be redeemed by the customer at checkout.
  */
 export async function findApplicableDiscount(
   date: string,
   pitch: string,
 ): Promise<Discount | null> {
   const all = await bookingRepository.listDiscounts();
-  const candidates = all.filter((d) => isApplicable(d, date, pitch));
+  const candidates = all.filter(
+    (d) => isApplicable(d, date, pitch) && !d.code,
+  );
   if (candidates.length === 0) return null;
   return candidates.reduce((best, d) => (d.percentOff > best.percentOff ? d : best));
 }
 
-/** Discounts active for a date (any pitch) — used to badge calendar cards. */
+/** Discounts active for a date (any pitch, auto-only) — for calendar badges. */
 export async function findDiscountsForDate(date: string): Promise<Discount[]> {
   const all = await bookingRepository.listDiscounts();
   return all.filter(
     (d) =>
       d.active &&
+      !d.code &&
       d.validFrom <= date &&
       d.validTo >= date &&
       (d.daysOfWeek.length === 0 ||
         d.daysOfWeek.includes(parseVenueDate(date).getUTCDay())),
   );
+}
+
+/** Look up a coupon by code (case-insensitive) and validate it for a slot. */
+export async function findCouponByCode(
+  rawCode: string,
+  date: string,
+  pitch: string,
+): Promise<Discount | null> {
+  const code = normalizeCouponCode(rawCode);
+  if (!code) return null;
+  const all = await bookingRepository.listDiscounts();
+  const match = all.find((d) => d.code === code);
+  if (!match) return null;
+  if (!isApplicable(match, date, pitch)) return null;
+  return match;
 }
 
 function isApplicable(d: Discount, date: string, pitch: string): boolean {

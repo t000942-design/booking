@@ -7,6 +7,10 @@ import {
   cancelBooking,
   getBookingByRef,
 } from "@/lib/services/bookings";
+import {
+  computeDiscountFils,
+  findCouponByCode,
+} from "@/lib/services/discounts";
 import { paymentClient } from "@/lib/payments";
 import { bookingRepository } from "@/lib/storage";
 
@@ -123,6 +127,54 @@ export async function completePaymentAction(
   await bookingRepository.markPaid(ref, result.paymentRef);
   revalidatePath(`/booking/${ref}`);
   return { ok: true };
+}
+
+export interface CouponState {
+  ok: boolean;
+  error: string | null;
+  applied?: { name: string; percentOff: number; discountFils: number } | null;
+}
+
+export async function applyCouponAction(
+  _prev: CouponState,
+  formData: FormData,
+): Promise<CouponState> {
+  const session = await getSession();
+  if (!session || session.role !== "customer") {
+    return { ok: false, error: "Sign in first." };
+  }
+
+  const ref = String(formData.get("ref") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
+  if (!ref) return { ok: false, error: "Missing booking reference." };
+  if (!code) return { ok: false, error: "Enter a coupon code." };
+
+  const booking = await getBookingByRef(ref);
+  if (!booking) return { ok: false, error: "Booking not found." };
+  if (booking.customerPhone !== session.phone) {
+    return { ok: false, error: "This booking belongs to a different account." };
+  }
+  if (booking.paymentStatus === "PAID") {
+    return { ok: false, error: "Already paid — can't change the discount." };
+  }
+
+  const coupon = await findCouponByCode(code, booking.date, booking.pitch);
+  if (!coupon) {
+    return { ok: false, error: `Coupon "${code.toUpperCase()}" isn't valid.` };
+  }
+
+  const discountFils = computeDiscountFils(booking.priceFils, coupon.percentOff);
+  await bookingRepository.applyDiscount(ref, discountFils, coupon.name);
+  revalidatePath(`/pay/${ref}`);
+  return {
+    ok: true,
+    error: null,
+    applied: {
+      name: coupon.name,
+      percentOff: coupon.percentOff,
+      discountFils,
+    },
+  };
 }
 
 export async function cancelPendingBookingAction(
