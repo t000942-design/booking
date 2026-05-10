@@ -27,6 +27,20 @@ import type {
  * env vars) and immediately see the real gateway, even if the edge
  * function isn't deployed yet.
  */
+export type PaymentMode = "direct" | "edge" | "stub";
+
+export function detectPaymentMode(): PaymentMode {
+  const directToken = process.env.MYFATOORAH_API_TOKEN ?? "";
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const supabaseKey =
+    process.env.SUPABASE_ANON_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    "";
+  if (directToken) return "direct";
+  if (supabaseUrl && supabaseKey) return "edge";
+  return "stub";
+}
+
 export function createMyFatoorahClient(): PaymentClient {
   const directToken = process.env.MYFATOORAH_API_TOKEN ?? "";
   const directBase =
@@ -37,11 +51,7 @@ export function createMyFatoorahClient(): PaymentClient {
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
     "";
 
-  const mode: "direct" | "edge" | "stub" = directToken
-    ? "direct"
-    : supabaseUrl && supabaseKey
-    ? "edge"
-    : "stub";
+  const mode: PaymentMode = detectPaymentMode();
 
   // ---- Direct (Next.js → MyFatoorah) ----
   async function directFetch(path: string, body: unknown): Promise<unknown> {

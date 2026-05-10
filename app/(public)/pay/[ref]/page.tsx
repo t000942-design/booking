@@ -6,7 +6,7 @@ import { branding } from "@/lib/config/branding";
 import { requireCustomer } from "@/lib/auth/guards";
 import { venueDateLabel, venueTime } from "@/lib/domain/slots";
 import { getBookingByRef } from "@/lib/services/bookings";
-import { paymentClient } from "@/lib/payments";
+import { detectPaymentMode, paymentClient } from "@/lib/payments";
 import { formatPrice } from "@/lib/utils/format";
 import type { PaymentMethod } from "@/lib/payments";
 import { PaymentMethodButtons } from "./PaymentForm";
@@ -47,7 +47,8 @@ export default async function PayPage({ params }: PageProps) {
       "Couldn't load payment methods from MyFatoorah. Check your API key.";
   }
 
-  const isStubbed = !process.env.MYFATOORAH_API_TOKEN;
+  const paymentMode = detectPaymentMode();
+  const isStubbed = paymentMode === "stub";
 
   return (
     <div className="flex flex-col gap-5 pt-4">
@@ -145,16 +146,22 @@ export default async function PayPage({ params }: PageProps) {
 
         {isStubbed ? (
           <div className="mt-3 rounded-lg bg-white/10 p-3 text-[11px] leading-relaxed text-amber-100">
-            <div className="font-semibold">Test mode · no real card charge</div>
+            <div className="font-semibold">Stub mode · no real card charge</div>
             <div className="mt-1">
-              Click any button to simulate a successful payment. To run against
-              the real MyFatoorah test API, drop a token into
-              <code className="ml-1 font-mono">MYFATOORAH_API_TOKEN</code>.
+              Click any button to simulate a successful payment. To hit the
+              real MyFatoorah hosted page (and enter test cards), set{" "}
+              <code className="font-mono">MYFATOORAH_API_TOKEN</code> in your
+              env vars and redeploy.
             </div>
-            <details className="mt-2">
-              <summary className="cursor-pointer font-semibold">
-                Show MyFatoorah test cards
-              </summary>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-lg bg-white/10 p-3 text-[11px] leading-relaxed text-emerald-100">
+            <div className="font-semibold">
+              Live mode · {paymentMode === "direct" ? "direct" : "edge function"} →
+              MyFatoorah sandbox
+            </div>
+            <details className="mt-1">
+              <summary className="cursor-pointer">Show test cards</summary>
               <ul className="mt-1 list-disc pl-4 font-mono text-[10px]">
                 <li>KNET · 0000000001 · expiry 09/25 · OTP 1111</li>
                 <li>VISA / MasterCard · 4005550000000001 · 05/26 · CVV 123</li>
@@ -162,7 +169,7 @@ export default async function PayPage({ params }: PageProps) {
               </ul>
             </details>
           </div>
-        ) : null}
+        )}
       </section>
 
       <Link
