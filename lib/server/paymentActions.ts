@@ -12,6 +12,11 @@ import { bookingRepository } from "@/lib/storage";
 
 export interface PaymentState {
   error: string | null;
+  /** When set, the client should perform `window.location.href = paymentUrl`
+   *  to send the customer to the gateway. Server-side redirects to external
+   *  URLs from Server Actions are flaky on some Next.js builds, so we drive
+   *  the navigation from the client instead. */
+  paymentUrl?: string;
 }
 
 export async function startPaymentAction(
@@ -59,11 +64,21 @@ export async function startPaymentAction(
     });
   } catch (err) {
     console.error("[payments] createIntent failed:", err);
-    return { error: "Couldn't start payment. Try again." };
+    const message =
+      err instanceof Error
+        ? err.message.slice(0, 200)
+        : "Couldn't start payment.";
+    return { error: message };
   }
 
-  // redirect throws — execution stops here.
-  redirect(intent.paymentUrl);
+  if (!intent.paymentUrl) {
+    return { error: "Gateway didn't return a payment URL." };
+  }
+
+  // Hand the URL back to the client so it can navigate. Avoids a server-side
+  // redirect to an external origin, which can return a generic 500 in some
+  // Next.js / Turbopack combinations.
+  return { error: null, paymentUrl: intent.paymentUrl };
 }
 
 export async function completePaymentAction(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   cancelPendingBookingAction,
@@ -20,6 +20,17 @@ export function PaymentMethodButtons({
 }) {
   const [state, formAction, pending] = useActionState(startPaymentAction, initial);
 
+  // When the server action succeeds, it returns a paymentUrl. We navigate
+  // the browser there ourselves — server-side redirects to external origins
+  // are unreliable from Server Actions.
+  useEffect(() => {
+    if (state.paymentUrl) {
+      window.location.href = state.paymentUrl;
+    }
+  }, [state.paymentUrl]);
+
+  const redirecting = pending || Boolean(state.paymentUrl);
+
   return (
     <div className="flex flex-col gap-2">
       {methods.length === 0 ? (
@@ -35,12 +46,12 @@ export function PaymentMethodButtons({
               type="submit"
               size="block"
               variant="primary"
-              disabled={pending}
+              disabled={redirecting}
               className="justify-between"
             >
               <span className="flex items-center gap-2">
                 <MethodIcon name={method.name} />
-                Pay with {method.label}
+                {redirecting ? "Redirecting…" : `Pay with ${method.label}`}
               </span>
               <span aria-hidden>→</span>
             </Button>
@@ -53,7 +64,7 @@ export function PaymentMethodButtons({
         <button
           type="submit"
           className="w-full rounded-xl px-3 py-2 text-xs font-semibold text-white/80 underline-offset-4 hover:underline"
-          disabled={pending}
+          disabled={redirecting}
         >
           Cancel this booking
         </button>
