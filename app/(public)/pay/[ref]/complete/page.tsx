@@ -6,17 +6,18 @@ import { completePaymentAction } from "@/lib/server/paymentActions";
 
 interface PageProps {
   params: Promise<{ ref: string }>;
-  searchParams: Promise<{
-    paymentRef?: string;
-    paymentId?: string;
-    Id?: string;
-    simulate?: string;
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 /**
  * Gateway return URL. Verifies the payment server-side, then redirects to
  * /booking/[ref] on success or back to /pay/[ref] on failure.
+ *
+ * MyFatoorah callback shape: ?paymentId=...&Id=...
+ *   - paymentId — passed back, use with KeyType="PaymentId"
+ *   - Id        — the invoice id, use with KeyType="InvoiceId"
+ * We prefer paymentId; fall back to Id; finally fall back to a synthesised
+ * key (only used by the stub path).
  */
 export default async function PaymentCompletePage({
   params,
@@ -30,15 +31,28 @@ export default async function PaymentCompletePage({
   if (!booking) notFound();
   if (booking.customerPhone !== session.phone) redirect("/book");
 
-  // Different gateways pass the id under different names.
-  const paymentRef =
-    search.paymentRef ?? search.paymentId ?? search.Id ?? `MFT-${booking.ref}`;
+  const paymentIdParam = pickString(search.paymentId);
+  const idParam = pickString(search.Id);
+  const paymentRefParam = pickString(search.paymentRef);
 
-  const result = await completePaymentAction(ref, paymentRef);
+  const { paymentRef, keyType } = paymentRefParam
+    ? { paymentRef: paymentRefParam, keyType: "PaymentId" as const }
+    : paymentIdParam
+    ? { paymentRef: paymentIdParam, keyType: "PaymentId" as const }
+    : idParam
+    ? { paymentRef: idParam, keyType: "InvoiceId" as const }
+    : { paymentRef: `MFT-${booking.ref}`, keyType: "PaymentId" as const };
+
+  const result = await completePaymentAction(ref, paymentRef, keyType);
 
   if (result.ok) {
     redirect(`/booking/${ref}`);
   }
+
+  // Build a small debug list so you can see what the gateway sent us.
+  const debugQuery = Object.entries(search)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join(",") : v}`);
 
   return (
     <div className="flex flex-col items-center gap-4 pt-10 text-center">
@@ -49,6 +63,24 @@ export default async function PaymentCompletePage({
       <p className="max-w-xs text-sm text-white/85">
         {result.error ?? "Try again or pick a different method."}
       </p>
+
+      {debugQuery.length > 0 ? (
+        <details className="max-w-xs rounded-xl bg-white/5 px-3 py-2 text-left text-[11px] text-white/70">
+          <summary className="cursor-pointer font-semibold">
+            Gateway returned {debugQuery.length} parameter
+            {debugQuery.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 space-y-0.5 break-all font-mono">
+            {debugQuery.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+            <li className="pt-1 text-white/50">
+              used: {paymentRef} / {keyType}
+            </li>
+          </ul>
+        </details>
+      ) : null}
+
       <Link
         href={`/pay/${ref}`}
         className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-pitch-900 shadow-lg hover:bg-pitch-50"
@@ -63,4 +95,9 @@ export default async function PaymentCompletePage({
       </Link>
     </div>
   );
+}
+
+function pickString(v: string | string[] | undefined): string | undefined {
+  if (Array.isArray(v)) return v[0];
+  return v;
 }

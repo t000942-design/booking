@@ -173,24 +173,25 @@ export function createMyFatoorahClient(): PaymentClient {
       };
     },
 
-    async verify(paymentRef: string): Promise<PaymentStatusResult> {
+    async verify(paymentRef, keyType = "PaymentId"): Promise<PaymentStatusResult> {
       if (mode === "stub") {
-        return { paid: true, paymentRef };
+        return { paid: true, paymentRef, rawStatus: "Paid" };
       }
       const body =
         mode === "direct"
           ? ((await directFetch("/v2/getPaymentStatus", {
               Key: paymentRef,
-              KeyType: "PaymentId",
+              KeyType: keyType,
             })) as VerifyResponse)
           : await edgeFetch<VerifyResponse>("verify", {
               paymentRef,
-              keyType: "PaymentId",
+              keyType,
             });
-      const status = body.Data.InvoiceStatus.toLowerCase();
+      const rawStatus = body.Data.InvoiceStatus;
+      const status = rawStatus.toLowerCase();
       const paid =
         status === "paid" || status === "successfull" || status === "successful";
-      return { paid, paymentRef };
+      return { paid, paymentRef, rawStatus };
     },
   };
 }

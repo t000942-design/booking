@@ -84,7 +84,8 @@ export async function startPaymentAction(
 export async function completePaymentAction(
   ref: string,
   paymentRef: string,
-): Promise<{ ok: boolean; error?: string }> {
+  keyType: "PaymentId" | "InvoiceId" = "PaymentId",
+): Promise<{ ok: boolean; error?: string; rawStatus?: string }> {
   const booking = await getBookingByRef(ref);
   if (!booking) return { ok: false, error: "Booking not found." };
   if (booking.paymentStatus === "PAID") {
@@ -93,16 +94,26 @@ export async function completePaymentAction(
 
   let result;
   try {
-    result = await paymentClient.verify(paymentRef);
+    result = await paymentClient.verify(paymentRef, keyType);
   } catch (err) {
     console.error("[payments] verify failed:", err);
     await bookingRepository.markPaymentFailed(ref);
-    return { ok: false, error: "Couldn't verify payment." };
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? `Verify failed: ${err.message.slice(0, 200)}`
+          : "Couldn't verify payment.",
+    };
   }
 
   if (!result.paid) {
     await bookingRepository.markPaymentFailed(ref);
-    return { ok: false, error: "Payment was not completed." };
+    return {
+      ok: false,
+      error: `MyFatoorah reported the invoice as "${result.rawStatus ?? "unknown"}" — try paying again.`,
+      rawStatus: result.rawStatus,
+    };
   }
 
   await bookingRepository.markPaid(ref, result.paymentRef);

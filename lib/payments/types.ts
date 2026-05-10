@@ -23,7 +23,12 @@ export interface PaymentStatusResult {
   paymentRef: string;
   /** Optional gateway-reported amount in fils. */
   amountFils?: number;
+  /** The raw status string the gateway returned, e.g. "Paid", "Pending",
+   *  "Failed", "Expired" — useful for showing the actual reason on failure. */
+  rawStatus?: string;
 }
+
+export type PaymentKeyType = "PaymentId" | "InvoiceId";
 
 export interface CreateIntentArgs {
   bookingRef: string;
@@ -51,6 +56,10 @@ export interface PaymentClient {
   /**
    * Verifies whether a payment associated with a paymentRef succeeded.
    * Called from the callback URL after the gateway redirects back.
+   * keyType says whether the ref is a PaymentId or InvoiceId.
    */
-  verify(paymentRef: string): Promise<PaymentStatusResult>;
+  verify(
+    paymentRef: string,
+    keyType?: PaymentKeyType,
+  ): Promise<PaymentStatusResult>;
 }
